@@ -9,9 +9,13 @@ credentials/
 client_secret*.json
 service-account*.json
 
-# Google Apps Script / clasp local auth
+# Google Apps Script / clasp local files
+.clasp.json
+**/.clasp.json
 .clasprc.json
 **/.clasprc.json
+appsscript.json.bak
+**/appsscript.json.bak
 
 # Dependencies and build output
 node_modules/
