@@ -46,7 +46,7 @@ const tablesSheet = registrySpreadsheet.getSheetByName('tables');
 | `Càrrega lectiva` | `assignatures` |
 | `Horaris` | `GPU001` |
 | `Dinantia` | `dinantia_2_dades_alumnes` |
-| `Grades` | `subjects_cache` |
+| `Grades` | `subjects_cache`, `avaluacions` |
 
 The old `Grades` -> `subjects` table is obsolete and must not be used for the new configuration workflow.
 
@@ -302,7 +302,31 @@ Logical table name in registry: `Grades`
 
 The old `Grades` -> `subjects` source table is deleted/obsolete.
 
-The current configuration workflow uses only the derived `subjects_cache` sheet.
+The current configuration workflow uses the derived `subjects_cache` sheet. The `Grades` spreadsheet also contains `avaluacions`, which registers evaluation-period grade sheets.
+
+### Sheet: avaluacions
+
+`avaluacions` registers evaluation periods and points to the sheet where each period's grade data is stored.
+
+The referenced grade-data sheets are always inside the same `Grades` spreadsheet.
+
+Row 1 contains headers. Data starts in row 2.
+
+| Column | Header | Meaning |
+| --- | --- | --- |
+| A | `id` | Autonumeric value that identifies each register. |
+| B | `nom_av` | Name of the evaluation period, for example `1a avaluació`. |
+| C | `sheet_name` | Name of the sheet, inside the `Grades` spreadsheet, where that evaluation period's data is stored. |
+
+#### avaluacions Rules
+
+`id` is the stable row/register identifier.
+
+`nom_av` is the human-readable evaluation period name shown to users.
+
+`sheet_name` stores a sheet name, not a spreadsheet ID. The target sheet must exist inside the `Grades` spreadsheet.
+
+If an existing header is named `sheet_id`, treat it as a naming error for this workflow and migrate it to `sheet_name` before implementation.
 
 ### Sheet: subjects_cache
 

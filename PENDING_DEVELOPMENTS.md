@@ -21,6 +21,20 @@ This file tracks pending decisions, redesign notes, and future implementation wo
 
 ## Pending Data Sources
 
+### `Grades` -> `avaluacions`
+
+Purpose: registers evaluation periods and the sheet where each period's grade data is stored.
+
+The referenced grade-data sheets are always inside the `Grades` spreadsheet.
+
+| Column | Header | Meaning |
+| --- | --- | --- |
+| A | `id` | Autonumeric value that identifies each register. |
+| B | `nom_av` | Name of the evaluation period, for example `1a avaluació`. |
+| C | `sheet_name` | Name of the sheet, inside the `Grades` spreadsheet, where that evaluation period's data is stored. |
+
+Note: if the real header is currently `sheet_id`, treat it as a naming error for this workflow and migrate it to `sheet_name` before implementation.
+
 ### `Horaris` -> `GPU001`
 
 Purpose: stores the high school schedule, one row per scheduled session.
