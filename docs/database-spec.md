@@ -2,7 +2,7 @@
 
 This project uses Google Drive spreadsheets as a shared database layer for Google Apps Script projects.
 
-Each logical table is represented by a Google Spreadsheet. A central registry spreadsheet maps logical table names to the spreadsheet IDs that store those tables.
+Each logical table is represented by a Google Spreadsheet. A central registry spreadsheet maps logical table names to spreadsheet IDs.
 
 ## Database Registry
 
@@ -14,7 +14,7 @@ The `db` property value is the spreadsheet ID of the database registry spreadshe
 
 Sheet name: `tables`
 
-| Column | Header / Value | Meaning |
+| Column | Value | Meaning |
 | --- | --- | --- |
 | A | logical table name | Human-readable logical table name. |
 | B | spreadsheet ID | Google Spreadsheet ID for that logical table. |
@@ -23,10 +23,10 @@ The registry stores spreadsheet IDs, not sheet IDs. The application decides whic
 
 ### Connection Flow
 
-1. Read the script property `db`.
+1. Read script property `db`.
 2. Open the registry spreadsheet by ID.
-3. Open the `tables` sheet.
-4. Read all registry rows.
+3. Open sheet `tables`.
+4. Read all rows.
 5. Find the row where column A matches the requested logical table name.
 6. Use column B as the spreadsheet ID for that logical table.
 7. Open the logical table spreadsheet by ID.
@@ -44,9 +44,11 @@ const tablesSheet = registrySpreadsheet.getSheetByName('tables');
 | --- | --- |
 | `Dades de professors` | `Llista`, `leave_absence` |
 | `Càrrega lectiva` | `assignatures` |
-| `Grades` | `subjects` |
+| `Horaris` | `GPU001` |
+| `Dinantia` | `dinantia_2_dades_alumnes` |
+| `Grades` | `subjects_cache` |
 
-The logical table name for teaching-load data may be stored with accents as `Càrrega lectiva`. Implementations should use the exact registry value configured in the database.
+The old `Grades` -> `subjects` table is obsolete and must not be used for the new configuration workflow.
 
 ## Table: Dades De Professors
 
@@ -60,8 +62,6 @@ This logical table contains teacher metadata and leave/substitution data.
 
 Row 1 contains headers. Data starts in row 2.
 
-The current structure has 16 columns.
-
 | Column | Header | Meaning |
 | --- | --- | --- |
 | A | `ESP` | Original teacher code. Used by `leave_absence.teacher_code`. |
@@ -69,7 +69,7 @@ The current structure has 16 columns.
 | C | `NOM` | First name. |
 | D | `COGNOM1` | First surname. |
 | E | `COGNOM2` | Second surname. |
-| F | `REDUIT` | Short teacher code used by most timetable and substitution logic. |
+| F | `REDUIT` / `REDUÏT` | Short teacher code used by timetable and substitution logic. |
 | G | `SITUACIO` | Employment/status description. Do not infer substitute status from this field. |
 | H | `JORNADA` | Workload or schedule fraction. |
 | I | `DNI` | ID document value. |
@@ -81,9 +81,9 @@ The current structure has 16 columns.
 | O | `BAIXA?` | Leave-of-absence boolean flag. |
 | P | `SUBST?` | Substitute boolean flag. This is the only source of substitute status. |
 
-#### Llista Rules
+### Teacher Rules
 
-`REDUIT` is the short teacher code used by normal application, timetable, and substitution operations.
+`REDUIT` / `REDUÏT` is the short teacher code used by normal application, timetable, and substitution operations.
 
 `ESP` is the original teacher code used by `leave_absence.teacher_code`.
 
@@ -95,36 +95,17 @@ NOM + " " + COGNOM1 + " " + COGNOM2
 
 Blank name parts must be omitted.
 
-Example:
-
-| Field | Value |
-| --- | --- |
-| `NOM` | `Gemma` |
-| `COGNOM1` | `Escudé` |
-| `COGNOM2` | `Pont` |
-
-Full name: `Gemma Escudé Pont`
-
 Teacher sorting should normally use:
 
 1. `COGNOM1`
 2. `COGNOM2`
 3. `NOM`
 
-The boolean fields are:
-
-| Header |
-| --- |
-| `NOUS` |
-| `ACTIU` |
-| `BAIXA?` |
-| `SUBST?` |
-
 Boolean readers must treat both real boolean `true` and string `"TRUE"` as true.
 
 Boolean writers must write real booleans, not strings.
 
-#### Active Teacher Rule
+### Active Teacher Rule
 
 A teacher is active when:
 
@@ -132,7 +113,7 @@ A teacher is active when:
 ACTIU = TRUE
 ```
 
-#### Substitute Teacher Rule
+### Substitute Teacher Rule
 
 A teacher is an eligible substitute when:
 
@@ -150,28 +131,22 @@ Do not infer substitute status from `SITUACIO`. `SUBST?` is the only source of s
 
 Row 1 contains headers. Data starts in row 2.
 
-The sheet has 6 columns.
-
 | Column | Header | Meaning |
 | --- | --- | --- |
 | A | `row_id` | Original row number in `Llista`. |
 | B | `teacher_code` | Original teacher `ESP` from `Llista` column A. |
-| C | `substitute_code` | Substitute teacher `REDUIT` from `Llista` column F. |
+| C | `substitute_code` | Substitute teacher `REDUIT` / `REDUÏT` from `Llista` column F. |
 | D | `start_date` | Leave start date. |
 | E | `end_date` | Leave end date. Blank means the leave is still active. |
 | F | `comments` | Free comments. |
 
-#### leave_absence Rules
+### Leave/Substitute Rules
 
 `leave_absence.teacher_code` must store the original teacher's `ESP`.
 
-`leave_absence.substitute_code` must store the substitute teacher's `REDUIT`.
+`leave_absence.substitute_code` must store the substitute teacher's `REDUIT` / `REDUÏT`.
 
 Do not store the substitute as `ESP`.
-
-Do not infer substitutes from `SITUACIO`.
-
-#### Active Leave Rule
 
 A leave is active when the relevant date is between the start and end dates, inclusive:
 
@@ -183,43 +158,18 @@ If `end_date` is blank, treat the leave as still active.
 
 For schedule and timetable applications, the relevant date is usually today in timezone `Europe/Madrid`.
 
-#### Starting A Leave
+When resolving the effective teacher for a timetable row:
 
-Starting a leave must:
-
-1. Add a row to `leave_absence`.
-2. Set `Llista` column `BAIXA?` to `TRUE` for the original teacher.
-
-#### Ending A Leave
-
-Ending a leave must:
-
-1. Fill `leave_absence.end_date`.
-2. Set `Llista` column `BAIXA?` to `FALSE` for the original teacher.
-
-#### Resolving A Substitute
-
-When a timetable or source row contains a teacher code:
-
-1. Read the source teacher code.
-2. If the source code is a `REDUIT`, find the teacher in `Llista.REDUIT`.
-3. Read that teacher's `ESP`.
+1. Read the scheduled teacher code from `Horaris` -> `GPU001` column C.
+2. Match it to `Llista.REDUIT` / `Llista.REDUÏT`.
+3. Read the matched teacher's `ESP`.
 4. Search active rows in `leave_absence`.
 5. Match `leave_absence.teacher_code` against the original teacher's `ESP`.
-6. If a matching active leave exists, read `leave_absence.substitute_code`.
-7. Find the substitute teacher in `Llista.REDUIT`.
+6. If an active leave exists, read `leave_absence.substitute_code`.
+7. Match the substitute code to `Llista.REDUIT` / `Llista.REDUÏT`.
 8. Use the substitute as the effective teacher.
-9. If no active leave exists, keep the original/source teacher.
-10. If the substitute code is invalid or missing, keep the original/source teacher and do not break the application.
-
-Teacher-code comparisons must be normalized before matching.
-
-Correct relationships:
-
-```text
-leave_absence.teacher_code = Llista.ESP
-leave_absence.substitute_code = Llista.REDUIT
-```
+9. If no active leave exists, keep the original scheduled teacher.
+10. If substitute data is invalid or missing, keep the original scheduled teacher and do not break the application.
 
 ## Table: Càrrega Lectiva
 
@@ -241,9 +191,7 @@ Row 1 contains headers. Data starts in row 2.
 | D | `untis_name` | Subject name/code as used by Untis. |
 | E | `true_subject` | Canonical or normalized subject value. |
 
-#### assignatures Rules
-
-Timetable/source rows usually contain the subject short code.
+### Subject Rules
 
 To display a subject:
 
@@ -252,321 +200,301 @@ To display a subject:
 3. If a match exists and `assignatures.full_name` is not blank, use `assignatures.full_name`.
 4. If no match exists, or `full_name` is blank, fall back to the raw subject code.
 
-Example:
+Use `short_name` or the raw subject code as the stable internal value.
 
-| Field | Value |
-| --- | --- |
-| Source subject code | `ANG` |
-| `assignatures.short_name` | `ANG` |
-| `assignatures.full_name` | `ANGLÈS` |
+Use `full_name` as the user-facing display value.
 
-Display value: `ANGLÈS`
+## Table: Horaris
 
-Recommended usage:
+Logical table name in registry: `Horaris`
 
-| Purpose | Field |
-| --- | --- |
-| Stable internal subject value | `short_name` / raw subject code |
-| User-facing subject name | `full_name` |
+This logical table contains the high school timetable.
 
-This keeps filters, joins, and comparisons stable even if the displayed subject name changes.
+### Sheet: GPU001
 
-## Table: Grades
+`GPU001` stores the schedule session by session.
 
-Logical table name in registry: `Grades`
+This sheet has no headers.
 
-This logical table contains student group subject assignments.
+| Column | Field | Meaning |
+| --- | --- | --- |
+| A | `id` | Autonumeric row identifier. |
+| B | `class_code` | Class/group code. |
+| C | `teacher_code` | Teacher code. Matches `Dades de professors` -> `Llista.REDUIT` / `Llista.REDUÏT`. |
+| D | `subject_code` | Subject code. Matches `Càrrega lectiva` -> `assignatures.short_name`. |
+| E | `classroom_name` | Classroom name. |
+| F | `weekday` | Day of the week, from `1` Monday to `5` Friday. |
+| G | `schedule_hour` | Schedule hour, from `1` to `12`. |
 
-### Sheet: subjects
+### GPU001 Rules
 
-`subjects` maps student groups to the teachers and subjects assigned to them.
+Because `GPU001` has no headers, implementations must read this sheet by fixed column position.
+
+Teacher resolution:
+
+```text
+Horaris.GPU001 column C = Dades de professors.Llista.REDUIT / REDUÏT
+```
+
+Subject resolution:
+
+```text
+Horaris.GPU001 column D = Càrrega lectiva.assignatures.short_name
+```
+
+Group resolution:
+
+```text
+Horaris.GPU001 column B = Dinantia.dinantia_2_dades_alumnes.untis_group_name
+```
+
+## Table: Dinantia
+
+Logical table name in registry: `Dinantia`
+
+This logical table maps group names/codes between Dinantia, student-data sheets, incidences, and Untis/timetable data.
+
+### Sheet: dinantia_2_dades_alumnes
 
 Row 1 contains headers. Data starts in row 2.
 
 | Column | Header | Meaning |
 | --- | --- | --- |
 | A | `id` | Autonumeric row identifier. |
-| B | `grup` | Student group name. |
-| C | `prof_reduit` | Teacher code. Matches `Dades de professors` -> `Llista.REDUIT`. |
-| D | `mat_reduit` | Subject code. Matches `Càrrega lectiva` -> `assignatures.short_name`. |
+| B | `dinantia_group_name` | Group name in the Dinantia app. |
+| C | `dades_alumnes_sheet` | Student-data sheet name. Not used by the current configuration workflow. |
+| D | `dinantia_group_name_incidencies` | Dinantia incidences group name. Not used by the current configuration workflow. |
+| E | `untis_group_name` | Comma-separated group code aliases used in `Horaris` -> `GPU001` column B. |
 
-#### subjects Rules
+### Dinantia Group Rules
 
-`id` is an autonumeric value used to identify each row.
+To resolve a timetable group code into a Dinantia group name:
 
-`grup` stores the student group name exactly as used by the application.
+1. Read `Horaris` -> `GPU001` column B.
+2. Split `Dinantia` -> `dinantia_2_dades_alumnes.untis_group_name` by comma.
+3. Match the timetable group code against any split alias.
+4. Use `dinantia_2_dades_alumnes.dinantia_group_name` as the resolved group name.
 
-`prof_reduit` stores the teacher's reduced code. To resolve complete teacher information:
+Example:
 
-1. Read `subjects.prof_reduit`.
-2. Match it against `Dades de professors` -> `Llista.REDUIT`.
-3. Use the matching `Llista` row as the complete teacher record.
+```text
+untis_group_name = PER1A,PER1B
+```
 
-`mat_reduit` stores the subject's reduced code. To resolve complete subject information:
+Both `PER1A` and `PER1B` from `GPU001` resolve to the same `dinantia_group_name`.
 
-1. Read `subjects.mat_reduit`.
-2. Match it against `Càrrega lectiva` -> `assignatures.short_name`.
-3. Use the matching `assignatures` row as the complete subject record.
+Relationship:
 
-Teacher-code comparisons should use `normalizeCode`.
+```text
+Horaris.GPU001.class_code = any comma-separated alias in Dinantia.dinantia_2_dades_alumnes.untis_group_name
+```
 
-Subject-code comparisons should trim surrounding spaces and use the same casing convention as `assignatures.short_name`.
+### subjects_cache Post-Processing Rules
 
-## Cache: subjects_cache
+After all substitutions are resolved:
 
-The `subjects_cache` sheet is a derived cache used by endpoint scripts that need group, teacher, and subject display data without repeatedly joining multiple spreadsheets at request time.
+1. Delete any cache row without a value in column C, `group_name`.
+2. Sort the entire cache table by column C, `group_name`.
 
-The cache is rebuilt from:
+## Table: Grades
 
-| Source | Purpose |
-| --- | --- |
-| `Grades` -> `subjects` | Base group/teacher/subject assignment rows. |
-| `Dades de professors` -> `Llista` | Teacher full-name resolution by `REDUIT` / `REDUÏT`. |
-| `Càrrega lectiva` -> `assignatures` | Subject full-name resolution by `short_name`. |
+Logical table name in registry: `Grades`
 
-### Cache Sheet Contract
+The old `Grades` -> `subjects` source table is deleted/obsolete.
 
-Sheet name: `subjects_cache`
+The current configuration workflow uses only the derived `subjects_cache` sheet.
+
+### Sheet: subjects_cache
+
+`subjects_cache` is a derived cache built from timetable sessions in `Horaris` -> `GPU001`, enriched with group, teacher, and subject display data.
+
+The sheet must be rewritten entirely every time the cache-building function is called.
+
+The cache-building function must be public so it can be run directly.
 
 | Column | Header | Meaning |
 | --- | --- | --- |
-| A | `id` | Original `Grades.subjects.id`. |
-| B | `grup` | Original `Grades.subjects.grup`. |
-| C | `prof_reduit` | Original `Grades.subjects.prof_reduit`. |
-| D | `teacher_full_name` | Resolved teacher full name from `Llista`: `NOM COGNOM1 COGNOM2`. |
-| E | `mat_reduit` | Original `Grades.subjects.mat_reduit`. |
-| F | `subject_full_name` | Resolved subject display name from `assignatures.full_name`. Falls back to `mat_reduit`. |
+| A | `id` | Autonumeric value for each cache row. |
+| B | `group` | Value from `Horaris` -> `GPU001` column B. |
+| C | `group_name` | Resolved Dinantia group name. |
+| D | `prof_reduit` | Value from `Horaris` -> `GPU001` column C. |
+| E | `teacher_full_name` | Resolved teacher full name from `Llista`: `NOM COGNOM1 COGNOM2`. |
+| F | `mat_reduit` | Value from `Horaris` -> `GPU001` column D. |
+| G | `subject_full_name` | Resolved subject display name from `assignatures.full_name`. |
+| H | `subject_dinantia_group_av` | Dinantia group ID selected for assessment. Defaults to `group_name` when rebuilt from `GPU001`. |
 
-### Cache Rules
+### subjects_cache Build Flow
 
-The cache should be rebuilt manually from a spreadsheet menu before endpoint data is consumed, or automatically by a trigger if the endpoint requires fresh data.
+1. Read all rows from `Horaris` -> `GPU001` into an in-memory array.
+2. Deduplicate the in-memory array before writing the cache.
+3. Two `GPU001` rows are duplicates when columns B, C, and D all match at the same time:
+   - B: group/class code
+   - C: teacher code
+   - D: subject code
+4. After deduplication, resolve group, teacher, and subject display values.
+5. Delete rows without a resolved `group_name`.
+6. Sort rows by `group_name`.
+7. Clear/rewrite `Grades` -> `subjects_cache` entirely.
+8. Write headers and all derived rows.
 
-The menu item is:
+### subjects_cache Field Resolution
+
+`group`:
 
 ```text
-Cache -> Rebuild subjects cache
+subjects_cache.group = Horaris.GPU001 column B
 ```
 
-Teacher resolution:
+`group_name`:
 
-1. Read `subjects.prof_reduit`.
-2. Normalize it with `normalizeCode_`.
-3. Match it against `Llista.REDUIT` or `Llista.REDUÏT`, also normalized.
-4. Build `teacher_full_name` from `NOM`, `COGNOM1`, and `COGNOM2`.
-5. Omit blank name parts.
-
-Subject resolution:
-
-1. Read `subjects.mat_reduit`.
-2. Normalize it with `normalizeCode_`.
-3. Match it against `assignatures.short_name`, also normalized.
-4. Use `assignatures.full_name` when present.
-5. Fall back to the raw `mat_reduit` when no subject match or full name exists.
-
-If a teacher cannot be resolved, `teacher_full_name` should be blank. The cache rebuild must not fail just because a teacher or subject reference is missing.
-
-### Spreadsheet GAS Function
-
-This function can be pasted into the spreadsheet-bound Apps Script project that owns the cache sheet.
-
-The script requires the `db` script property described in the Database Registry section.
-
-```js
-const CACHE_SHEET_NAME = 'subjects_cache';
-
-function onOpen() {
-  SpreadsheetApp.getUi()
-    .createMenu('Cache')
-    .addItem('Rebuild subjects cache', 'rebuildSubjectsCache')
-    .addToUi();
-}
-
-function rebuildSubjectsCache() {
-  const gradesSpreadsheet = openLogicalTableSpreadsheet_('Grades');
-  const subjectsSheet = getRequiredSheet_(gradesSpreadsheet, 'subjects');
-
-  const teachersSpreadsheet = openLogicalTableSpreadsheet_('Dades de professors');
-  const teachersSheet = getRequiredSheet_(teachersSpreadsheet, 'Llista');
-
-  const subjectsCatalogSpreadsheet = openLogicalTableSpreadsheet_('Càrrega lectiva');
-  const assignaturesSheet = getRequiredSheet_(subjectsCatalogSpreadsheet, 'assignatures');
-
-  const subjectRows = readRowsByHeader_(subjectsSheet);
-  const teacherRows = readRowsByHeader_(teachersSheet);
-  const assignaturaRows = readRowsByHeader_(assignaturesSheet);
-
-  const teachersByReduit = new Map();
-  teacherRows.forEach(row => {
-    const reduit = normalizeCode_(getField_(row, 'REDUIT', 'REDUÏT'));
-    if (!reduit) return;
-
-    teachersByReduit.set(reduit, buildTeacherFullName_(row));
-  });
-
-  const subjectsByShortName = new Map();
-  assignaturaRows.forEach(row => {
-    const shortName = normalizeCode_(getField_(row, 'short_name'));
-    if (!shortName) return;
-
-    const fullName = String(getField_(row, 'full_name') || getField_(row, 'short_name') || '').trim();
-    subjectsByShortName.set(shortName, fullName);
-  });
-
-  const cacheHeaders = [
-    'id',
-    'grup',
-    'prof_reduit',
-    'teacher_full_name',
-    'mat_reduit',
-    'subject_full_name'
-  ];
-
-  const cacheValues = subjectRows.map(row => {
-    const profReduit = getField_(row, 'prof_reduit');
-    const matReduit = getField_(row, 'mat_reduit');
-
-    const teacherFullName = teachersByReduit.get(normalizeCode_(profReduit)) || '';
-    const subjectFullName =
-      subjectsByShortName.get(normalizeCode_(matReduit)) ||
-      String(matReduit || '').trim();
-
-    return [
-      getField_(row, 'id'),
-      getField_(row, 'grup'),
-      profReduit,
-      teacherFullName,
-      matReduit,
-      subjectFullName
-    ];
-  });
-
-  const targetSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  const cacheSheet = getOrCreateSheet_(targetSpreadsheet, CACHE_SHEET_NAME);
-
-  cacheSheet.clearContents();
-  cacheSheet.getRange(1, 1, 1, cacheHeaders.length).setValues([cacheHeaders]);
-
-  if (cacheValues.length > 0) {
-    cacheSheet
-      .getRange(2, 1, cacheValues.length, cacheHeaders.length)
-      .setValues(cacheValues);
-  }
-
-  cacheSheet.autoResizeColumns(1, cacheHeaders.length);
-
-  SpreadsheetApp.getUi().alert(`Subjects cache rebuilt: ${cacheValues.length} rows.`);
-}
-
-function openLogicalTableSpreadsheet_(logicalTableName) {
-  const dbId = PropertiesService.getScriptProperties().getProperty('db');
-  if (!dbId) {
-    throw new Error('Missing script property: db');
-  }
-
-  const registrySpreadsheet = SpreadsheetApp.openById(dbId);
-  const tablesSheet = getRequiredSheet_(registrySpreadsheet, 'tables');
-  const rows = tablesSheet.getDataRange().getValues();
-
-  for (let i = 1; i < rows.length; i++) {
-    const name = String(rows[i][0] || '').trim();
-    const spreadsheetId = String(rows[i][1] || '').trim();
-
-    if (name === logicalTableName && spreadsheetId) {
-      return SpreadsheetApp.openById(spreadsheetId);
-    }
-  }
-
-  throw new Error(`Logical table not found in registry: ${logicalTableName}`);
-}
-
-function readRowsByHeader_(sheet) {
-  const values = sheet.getDataRange().getValues();
-  if (values.length < 2) return [];
-
-  const headers = values[0].map(header => String(header || '').trim());
-
-  return values.slice(1)
-    .filter(row => row.some(value => value !== '' && value !== null))
-    .map(row => {
-      const record = {};
-      headers.forEach((header, index) => {
-        if (!header) return;
-
-        record[header] = row[index];
-        record[normalizeHeader_(header)] = row[index];
-      });
-      return record;
-    });
-}
-
-function buildTeacherFullName_(teacherRow) {
-  return [
-    getField_(teacherRow, 'NOM'),
-    getField_(teacherRow, 'COGNOM1'),
-    getField_(teacherRow, 'COGNOM2')
-  ]
-    .map(value => String(value || '').trim())
-    .filter(Boolean)
-    .join(' ');
-}
-
-function getField_(row, ...headers) {
-  for (const header of headers) {
-    if (Object.prototype.hasOwnProperty.call(row, header)) {
-      return row[header];
-    }
-
-    const normalizedHeader = normalizeHeader_(header);
-    if (Object.prototype.hasOwnProperty.call(row, normalizedHeader)) {
-      return row[normalizedHeader];
-    }
-  }
-
-  return '';
-}
-
-function normalizeHeader_(value) {
-  return String(value || '')
-    .trim()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toUpperCase();
-}
-
-function normalizeCode_(value) {
-  return String(value || '')
-    .trim()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toUpperCase();
-}
-
-function getRequiredSheet_(spreadsheet, sheetName) {
-  const sheet = spreadsheet.getSheetByName(sheetName);
-  if (!sheet) {
-    throw new Error(`Sheet not found: ${sheetName}`);
-  }
-  return sheet;
-}
-
-function getOrCreateSheet_(spreadsheet, sheetName) {
-  return spreadsheet.getSheetByName(sheetName) || spreadsheet.insertSheet(sheetName);
-}
+```text
+subjects_cache.group_name = Dinantia.dinantia_2_dades_alumnes.dinantia_group_name
+where Horaris.GPU001 column B = Dinantia.dinantia_2_dades_alumnes.untis_group_name
 ```
+
+`prof_reduit`:
+
+```text
+subjects_cache.prof_reduit = Horaris.GPU001 column C
+```
+
+`teacher_full_name`:
+
+```text
+subjects_cache.teacher_full_name = Dades de professors.Llista NOM + COGNOM1 + COGNOM2
+where Horaris.GPU001 column C = Dades de professors.Llista.REDUIT / REDUÏT
+```
+
+`mat_reduit`:
+
+```text
+subjects_cache.mat_reduit = Horaris.GPU001 column D
+```
+
+`subject_full_name`:
+
+```text
+subjects_cache.subject_full_name = Càrrega lectiva.assignatures.full_name
+where Horaris.GPU001 column D = Càrrega lectiva.assignatures.short_name
+```
+
+`subject_dinantia_group_av`:
+
+```text
+subjects_cache.subject_dinantia_group_av = Dinantia group id selected in the endpoint
+```
+
+When `subjects_cache` is rebuilt from `GPU001`, this field may initially be filled with `group_name` as a fallback. Manual endpoint edits should replace it with a Dinantia group ID.
+
+If group, teacher, or subject references cannot be resolved, the cache builder should preserve the source code and leave the unresolved display value blank or fall back to the source code when a user-facing value is required.
+
+## Configuration Endpoint
+
+The configuration endpoint is served by the Apps Script web app.
+
+Page title: `Configuració`
+
+### Public Functions
+
+Only functions with a specific external purpose should remain public.
+
+Public functions:
+
+| Function | Purpose |
+| --- | --- |
+| `doGet` | Web app entrypoint. |
+| `grantPermissionsManually` | Manual authorization helper for the script owner. |
+| `buildSubjectsCache` | Dangerous full rebuild of `Grades` -> `subjects_cache` from `Horaris` -> `GPU001`. |
+| `getConfigurationData` | Frontend data loader for the configuration endpoint. |
+| `saveSubjectsCacheEdits` | Frontend save handler for manual edits to `Grades` -> `subjects_cache`. |
+
+All other functions must be private helpers with a trailing `_`.
+
+### Endpoint UI
+
+The endpoint must show:
+
+1. A group dropdown selector, empty by default.
+2. When a group is selected, editable rows from `Grades` -> `subjects_cache` for that group.
+3. One floating refresh bubble button with a refresh icon in the bottom-right corner.
+4. A warning modal before cache rebuild.
+5. Two buttons under the editable list:
+   - `+` to add a line.
+   - 3.5-inch disk icon to save.
+
+Editable row fields:
+
+| UI label | Cache column |
+| --- | --- |
+| `Assignatura` | `subject_full_name` |
+| `Professor` | `teacher_full_name` |
+| `Grup d'alumnes per avaluar` | `subject_dinantia_group_av` |
+
+Each editable field must be rendered as a dropdown selector.
+
+### Dropdown Data Sources
+
+Dropdown option lists are calculated once when loading the page.
+
+| Dropdown | Source | Sort |
+| --- | --- | --- |
+| Group selector | Unique `subjects_cache.group_name` values. | Alphabetical. |
+| `Assignatura` | Unique `subjects_cache.subject_full_name` values. | Alphabetical. |
+| `Professor` | Unique `subjects_cache.teacher_full_name` values. | Alphabetical. |
+| `Grup d'alumnes per avaluar` | Dinantia API group IDs from `GET /v1/groups/index`. | Alphabetical. |
+
+### Save Behavior
+
+Manual edits are saved directly to `Grades` -> `subjects_cache`.
+
+The page must track which rows have been edited.
+
+Saving should send only edited rows and new rows to the server.
+
+The server should update only the submitted existing row IDs and append submitted new rows while preserving all other rows.
+
+New rows added with `+` are written to `subjects_cache` and assigned new `id` values during save.
+
+While save is running, the page must be disabled so the user cannot change selectors, add rows, save again, or rebuild the cache.
+
+After save, the cache sheet should remain sorted by `group_name`.
+
+### Rebuild Warning
+
+The floating refresh button must show this warning in Catalan before running `buildSubjectsCache`:
+
+```text
+Reconstruir la cache?
+
+Aquesta acció esborrarà totes les dades actuals de la cache i les substituirà amb les dades generades a partir de l'horari GPU001.
+
+Qualsevol canvi manual fet en aquesta pantalla es pot perdre.
+
+Vols continuar?
+```
+
+Buttons:
+
+```text
+Cancel·lar
+Continuar i reconstruir
+```
+
+`buildSubjectsCache` is dangerous because it fully rewrites `subjects_cache` from `GPU001` and can overwrite manual edits.
 
 ## Implementation Requirements
 
 ### Header Handling
 
-Always read sheets by header names when possible, not by hardcoded column numbers.
+Read sheets by header names when possible.
 
-If fixed column positions are required, use the schemas defined in this document.
+The exception is `Horaris` -> `GPU001`, which has no headers and must be read by fixed column position.
 
-Header matching should be robust to surrounding spaces.
+Header matching should be robust to surrounding spaces and accents when needed.
 
 ### Code Normalization
 
-Teacher-code joins must normalize codes before comparison:
+Teacher-code and group-code joins must normalize codes before comparison:
 
 ```js
 function normalizeCode(value) {
@@ -583,9 +511,14 @@ Use `normalizeCode` for joins involving:
 | Field |
 | --- |
 | `Llista.ESP` |
-| `Llista.REDUIT` |
+| `Llista.REDUIT` / `Llista.REDUÏT` |
 | `leave_absence.teacher_code` |
 | `leave_absence.substitute_code` |
+| `GPU001.class_code` |
+| `GPU001.teacher_code` |
+| `GPU001.subject_code` |
+| `dinantia_2_dades_alumnes.untis_group_name` |
+| `assignatures.short_name` |
 
 ### Boolean Parsing
 
@@ -607,14 +540,15 @@ For leave calculations:
 
 ## Practical Defaults
 
-For most applications:
-
 | Use case | Field |
 | --- | --- |
-| Normal teacher operations | `Llista.REDUIT` |
+| Normal teacher operations | `Llista.REDUIT` / `Llista.REDUÏT` |
 | Matching original teachers in leave records | `Llista.ESP` |
-| Substitute teacher stored in leave records | `leave_absence.substitute_code` as `REDUIT` |
+| Substitute teacher stored in leave records | `leave_absence.substitute_code` as `REDUIT` / `REDUÏT` |
 | Stable subject code | `assignatures.short_name` |
 | Display subject name | `assignatures.full_name` |
-| Group subject teacher | `subjects.prof_reduit` matched to `Llista.REDUIT` |
-| Group subject code | `subjects.mat_reduit` matched to `assignatures.short_name` |
+| Timetable source group | `GPU001` column B |
+| Timetable source teacher | `GPU001` column C |
+| Timetable source subject | `GPU001` column D |
+| Dinantia display group | `dinantia_2_dades_alumnes.dinantia_group_name` |
+| Endpoint/cache group-subject-teacher source | `Grades` -> `subjects_cache` |

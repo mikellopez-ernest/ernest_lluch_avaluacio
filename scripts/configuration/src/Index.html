@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="ca">
+  <head>
+    <base target="_top">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuració</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f7f8fa;
+        --surface: #ffffff;
+        --text: #202124;
+        --muted: #5f6368;
+        --line: #dfe3e8;
+        --accent: #2563eb;
+        --accent-dark: #1746a2;
+        --danger: #b3261e;
+        --success: #146c43;
+        --warning-bg: #fff7ed;
+        --warning-line: #fdba74;
+        font-family: Arial, Helvetica, sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--text);
+      }
+
+      main {
+        width: min(1120px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 32px 0 96px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 32px;
+        font-weight: 700;
+        letter-spacing: 0;
+      }
+
+      .status {
+        min-height: 24px;
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .status.error {
+        color: var(--danger);
+      }
+
+      .status.success {
+        color: var(--success);
+      }
+
+      .selector-panel,
+      .editor-panel {
+        margin-top: 24px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+        padding: 18px;
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      select {
+        width: 100%;
+        min-height: 40px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #fff;
+        color: var(--text);
+        font-size: 14px;
+        padding: 0 10px;
+      }
+
+      select:focus {
+        border-color: var(--accent);
+        outline: 2px solid rgba(37, 99, 235, 0.18);
+      }
+
+      .editor-header,
+      .cache-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 12px;
+      }
+
+      .editor-header {
+        margin-bottom: 8px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .rows {
+        display: grid;
+        gap: 10px;
+      }
+
+      .actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 18px;
+      }
+
+      .icon-button {
+        display: inline-grid;
+        place-items: center;
+        width: 44px;
+        height: 44px;
+        border: 0;
+        border-radius: 999px;
+        background: var(--accent);
+        color: #fff;
+        font-size: 24px;
+        cursor: pointer;
+      }
+
+      .icon-button:hover {
+        background: var(--accent-dark);
+      }
+
+      .icon-button:disabled {
+        cursor: wait;
+        opacity: 0.65;
+      }
+
+      .refresh-bubble {
+        position: fixed;
+        right: 24px;
+        bottom: 24px;
+        z-index: 20;
+      }
+
+      .empty {
+        margin-top: 24px;
+        padding: 28px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+        color: var(--muted);
+      }
+
+      .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 30;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(32, 33, 36, 0.42);
+        padding: 20px;
+      }
+
+      .modal-backdrop.open {
+        display: flex;
+      }
+
+      .modal {
+        width: min(520px, 100%);
+        border: 1px solid var(--warning-line);
+        border-radius: 8px;
+        background: var(--warning-bg);
+        padding: 22px;
+        box-shadow: 0 18px 60px rgba(32, 33, 36, 0.22);
+      }
+
+      .modal h2 {
+        margin: 0 0 12px;
+        font-size: 22px;
+        letter-spacing: 0;
+      }
+
+      .modal p {
+        margin: 10px 0;
+        color: var(--text);
+        line-height: 1.45;
+      }
+
+      .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 20px;
+      }
+
+      .text-button,
+      .danger-button {
+        min-height: 40px;
+        border-radius: 6px;
+        padding: 0 14px;
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .text-button {
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--text);
+      }
+
+      .danger-button {
+        border: 0;
+        background: var(--danger);
+        color: #fff;
+      }
+
+      @media (max-width: 720px) {
+        main {
+          width: min(100% - 20px, 1120px);
+          padding-top: 24px;
+        }
+
+        h1 {
+          font-size: 28px;
+        }
+
+        .editor-header {
+          display: none;
+        }
+
+        .cache-row {
+          grid-template-columns: 1fr;
+          padding: 12px 0;
+          border-bottom: 1px solid var(--line);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Configuració</h1>
+        <div id="status" class="status">Carregant dades...</div>
+      </header>
+
+      <section class="selector-panel">
+        <label>
+          Grup
+          <select id="group-selector">
+            <option value="">Selecciona un grup...</option>
+          </select>
+        </label>
+      </section>
+
+      <section id="editor" class="editor-panel" hidden>
+        <div class="editor-header">
+          <span>Assignatura</span>
+          <span>Professor</span>
+          <span>Grup d'alumnes per avaluar</span>
+        </div>
+        <div id="rows" class="rows"></div>
+        <div class="actions">
+          <button id="add-row" class="icon-button" type="button" aria-label="Afegir fila">+</button>
+          <button id="save" class="icon-button" type="button" aria-label="Desar">💾</button>
+        </div>
+      </section>
+
+      <section id="empty" class="empty">Selecciona un grup per editar la configuració.</section>
+    </main>
+
+    <button id="refresh" class="icon-button refresh-bubble" type="button" aria-label="Reconstruir cache">↻</button>
+
+    <div id="modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal">
+        <h2 id="modal-title">Reconstruir la cache?</h2>
+        <p>Aquesta acció esborrarà totes les dades actuals de la cache i les substituirà amb les dades generades a partir de l'horari GPU001.</p>
+        <p>Qualsevol canvi manual fet en aquesta pantalla es pot perdre.</p>
+        <p>Vols continuar?</p>
+        <div class="modal-actions">
+          <button id="cancel-rebuild" class="text-button" type="button">Cancel·lar</button>
+          <button id="confirm-rebuild" class="danger-button" type="button">Continuar i reconstruir</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let state = {
+        groups: [],
+        rowsByGroup: {},
+        options: {
+          subjects: [],
+          teachers: [],
+          dinantiaGroups: []
+        }
+      };
+
+      document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('group-selector').addEventListener('change', renderSelectedGroup);
+        document.getElementById('add-row').addEventListener('click', addEditableRow);
+        document.getElementById('save').addEventListener('click', saveRows);
+        document.getElementById('refresh').addEventListener('click', openModal);
+        document.getElementById('cancel-rebuild').addEventListener('click', closeModal);
+        document.getElementById('confirm-rebuild').addEventListener('click', rebuildCache);
+        loadData();
+      });
+
+      function loadData() {
+        setStatus('Carregant dades...');
+        google.script.run
+          .withSuccessHandler(data => {
+            state = data;
+            renderGroupSelector();
+            renderSelectedGroup();
+            setStatus('');
+          })
+          .withFailureHandler(showError)
+          .getConfigurationData();
+      }
+
+      function renderGroupSelector() {
+        const selector = document.getElementById('group-selector');
+        const currentValue = selector.value;
+        selector.innerHTML = '<option value="">Selecciona un grup...</option>';
+
+        state.groups.forEach(group => {
+          const option = document.createElement('option');
+          option.value = group;
+          option.textContent = group;
+          selector.appendChild(option);
+        });
+
+        if (state.groups.includes(currentValue)) {
+          selector.value = currentValue;
+        }
+      }
+
+      function renderSelectedGroup() {
+        const groupName = document.getElementById('group-selector').value;
+        const editor = document.getElementById('editor');
+        const empty = document.getElementById('empty');
+        const rowsContainer = document.getElementById('rows');
+
+        rowsContainer.innerHTML = '';
+
+        if (!groupName) {
+          editor.hidden = true;
+          empty.hidden = false;
+          return;
+        }
+
+        const rows = state.rowsByGroup[groupName] || [];
+        rows.forEach(row => rowsContainer.appendChild(createEditableRow(row)));
+
+        editor.hidden = false;
+        empty.hidden = true;
+      }
+
+      function createEditableRow(row) {
+        const item = document.createElement('div');
+        item.className = 'cache-row';
+        item.dataset.id = row.id || '';
+        item.dataset.group = row.group || '';
+        item.dataset.dirty = row.id ? 'false' : 'true';
+
+        const subjectSelect = createSelect('subject', state.options.subjects, row.subjectFullName);
+        const teacherSelect = createSelect('teacher', state.options.teachers, row.teacherFullName);
+        const dinantiaGroupSelect = createSelect('dinantia-group', state.options.dinantiaGroups, row.subjectDinantiaGroupAv);
+
+        [subjectSelect, teacherSelect, dinantiaGroupSelect].forEach(select => {
+          select.addEventListener('change', () => {
+            item.dataset.dirty = 'true';
+          });
+        });
+
+        item.append(subjectSelect, teacherSelect, dinantiaGroupSelect);
+
+        return item;
+      }
+
+      function createSelect(role, options, selectedValue) {
+        const select = document.createElement('select');
+        select.dataset.role = role;
+
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Selecciona...';
+        select.appendChild(placeholder);
+
+        options.forEach(value => {
+          const option = document.createElement('option');
+          option.value = value;
+          option.textContent = value;
+          select.appendChild(option);
+        });
+
+        select.value = selectedValue || '';
+        return select;
+      }
+
+      function addEditableRow() {
+        const groupName = document.getElementById('group-selector').value;
+        if (!groupName) return;
+
+        const existingRows = state.rowsByGroup[groupName] || [];
+        const sourceGroup = existingRows.length ? existingRows[0].group : '';
+        document.getElementById('rows').appendChild(createEditableRow({
+          id: '',
+          group: sourceGroup,
+          subjectFullName: '',
+          teacherFullName: '',
+          subjectDinantiaGroupAv: ''
+        }));
+      }
+
+      function saveRows() {
+        const groupName = document.getElementById('group-selector').value;
+        if (!groupName) {
+          setStatus('Selecciona un grup.', 'error');
+          return;
+        }
+
+        const rows = Array.from(document.querySelectorAll('.cache-row[data-dirty="true"]')).map(row => ({
+          id: row.dataset.id,
+          group: row.dataset.group,
+          subjectFullName: row.querySelector('select[data-role="subject"]').value,
+          teacherFullName: row.querySelector('select[data-role="teacher"]').value,
+          subjectDinantiaGroupAv: row.querySelector('select[data-role="dinantia-group"]').value
+        }));
+
+        if (!rows.length) {
+          setStatus('No hi ha canvis per desar.');
+          return;
+        }
+
+        setBusy(true);
+        setStatus('Desant...');
+
+        google.script.run
+          .withSuccessHandler(data => {
+            state = data;
+            renderGroupSelector();
+            document.getElementById('group-selector').value = groupName;
+            renderSelectedGroup();
+            setBusy(false);
+            setStatus('Canvis desats.', 'success');
+          })
+          .withFailureHandler(error => {
+            setBusy(false);
+            showError(error);
+          })
+          .saveSubjectsCacheEdits({
+            groupName,
+            rows
+          });
+      }
+
+      function openModal() {
+        document.getElementById('modal').classList.add('open');
+      }
+
+      function closeModal() {
+        document.getElementById('modal').classList.remove('open');
+      }
+
+      function rebuildCache() {
+        closeModal();
+        setBusy(true);
+        setStatus('Reconstruint cache...');
+
+        google.script.run
+          .withSuccessHandler(() => {
+            setBusy(false);
+            setStatus('Cache reconstruida.', 'success');
+            loadData();
+          })
+          .withFailureHandler(error => {
+            setBusy(false);
+            showError(error);
+          })
+          .buildSubjectsCache();
+      }
+
+      function setBusy(isBusy) {
+        document.getElementById('refresh').disabled = isBusy;
+        document.getElementById('save').disabled = isBusy;
+        document.getElementById('add-row').disabled = isBusy;
+        document.getElementById('group-selector').disabled = isBusy;
+        document.querySelectorAll('select').forEach(select => {
+          select.disabled = isBusy;
+        });
+      }
+
+      function setStatus(message, type) {
+        const status = document.getElementById('status');
+        status.textContent = message || '';
+        status.className = `status ${type || ''}`.trim();
+      }
+
+      function showError(error) {
+        setStatus(error && error.message ? error.message : String(error), 'error');
+      }
+    </script>
+  </body>
+</html>
