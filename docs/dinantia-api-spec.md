@@ -23,10 +23,10 @@ Missing or blank credentials must produce a clear configuration error.
 
 ## Base Request Contract
 
-Base URL pattern:
+Base URL used by the configuration script:
 
 ```text
-https://{school-domain}.dinantia.com/api/web
+https://app.dinantia.com/api/web
 ```
 
 Required headers:
@@ -37,7 +37,7 @@ Required headers:
 | `Content-Type` | `application/vnd.api+json` |
 | `Authorization` | Basic Auth header built from script properties. |
 
-The school-specific Dinantia domain must be configured separately from credentials. Do not hardcode credentials in the domain, URL, or request body.
+Do not hardcode credentials in the domain, URL, or request body.
 
 ## Pagination
 
@@ -91,6 +91,33 @@ Future attendance workflows will need student `account_id` values for attendees.
 
 By now, local teacher records do not need to map to Dinantia `account_id`, but that may change if we create Dinantia classes or attendance records tied to teacher accounts.
 
+### Student Group Membership
+
+Student group membership is not read from `groups/view/:id`.
+
+For the current API responses, student memberships are stored inside each account object:
+
+```json
+{
+  "roles": ["Student"],
+  "groups": {
+    "member": ["1r ESO A", "ESO-1R-"]
+  }
+}
+```
+
+Rules:
+
+1. Read all accounts from `GET /v1/accounts/index` using pagination.
+2. Keep only accounts where `roles` contains `Student`.
+3. Read group IDs from `account.groups.member`.
+4. `account.groups.member` is an array of strings.
+5. Index students in memory by each membership string.
+6. Use the account `id` as the stable student identifier.
+7. Use the account `name` as `student_full_name` for evaluation sheets.
+
+The extractor should recurse through `account.groups` so it also supports future group buckets beyond `member`, but string values in `groups.member` are the confirmed source needed today.
+
 ## Groups
 
 Relevant endpoints:
@@ -117,6 +144,10 @@ students, parents
 The local table `Dinantia` -> `dinantia_2_dades_alumnes` stores `dinantia_group_name`, mapped from local timetable group aliases in `untis_group_name`.
 
 For endpoint editing, use group `id` for the `Grup d'alumnes per avaluar` dropdown. It is the fastest and most stable value to store for later API operations.
+
+Important detail: Dinantia group IDs can be human-readable strings, for example `1r ESO A`, `4t ESO F`, or `BATX 2n B`. Do not assume group IDs are numeric or opaque.
+
+For compatibility, local code may resolve a selected/cache group value through group `id`, `name`, or `tag`, but student membership matching must ultimately use the group ID string found in `account.groups.member`.
 
 For future attendance write operations, confirm whether the `groups` payload expects these IDs directly or a nested/group-specific structure.
 
@@ -251,9 +282,12 @@ The current local cache `Grades` -> `subjects_cache` provides:
 | `group_name` | Dinantia group display name from local mapping table. |
 | `prof_reduit` | Local teacher code from `GPU001`. |
 | `teacher_full_name` | Local teacher display name. |
+| `teacher_email` | Local teacher email from `Dades de professors` -> `Llista.CORREU`. |
 | `mat_reduit` | Local subject code from `GPU001`. |
 | `subject_full_name` | Local subject display name. |
 | `subject_dinantia_group_av` | Dinantia group ID selected for assessment. |
+
+For evaluation-sheet generation, student account membership is read from `accounts.groups.member`, which contains Dinantia group IDs as strings. The implementation should fetch all accounts once, filter students, index them by membership group, and then expand `subjects_cache` rows from that in-memory index.
 
 This cache is useful for display and local configuration, but it is not yet sufficient for Dinantia attendance writes.
 
@@ -271,7 +305,7 @@ Before creating attendance records, future development must define or build mapp
 
 Dinantia API callers must:
 
-1. Throw clear configuration errors for missing domain, user, or secret.
+1. Throw clear configuration errors for missing user or secret.
 2. Never log Basic Auth headers or raw secrets.
 3. Treat non-2xx responses as errors.
 4. Include endpoint path and status code in errors.

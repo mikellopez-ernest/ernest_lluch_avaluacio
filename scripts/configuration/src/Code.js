@@ -29,6 +29,9 @@ function grantPermissionsManually() {
   getRequiredSheet_(openLogicalTableSpreadsheet_(GRADES_TABLE_NAME), CACHE_SHEET_NAME)
     .getDataRange()
     .getValues();
+  getRequiredSheet_(openLogicalTableSpreadsheet_(GRADES_TABLE_NAME), 'avaluacions')
+    .getDataRange()
+    .getValues();
   getRequiredSheet_(openLogicalTableSpreadsheet_(HORARIS_TABLE_NAME), HORARIS_SHEET_NAME)
     .getDataRange()
     .getValues();
@@ -113,12 +116,14 @@ function saveSubjectsCacheEdits(payload) {
 
     rows.forEach(row => {
       const id = String(row.id || '').trim();
+      const teacherInfo = findTeacherInfoByName_(row.teacherFullName);
       const updatedRow = {
         id: Number(id) || '',
         group: String(row.group || groupCode || '').trim(),
         groupName,
-        profReduit: findTeacherCodeByName_(row.teacherFullName),
+        profReduit: teacherInfo.code,
         teacherFullName: String(row.teacherFullName || '').trim(),
+        teacherEmail: teacherInfo.email,
         matReduit: findSubjectCodeByName_(row.subjectFullName),
         subjectFullName: String(row.subjectFullName || '').trim(),
         subjectDinantiaGroupAv: String(row.subjectDinantiaGroupAv || '').trim()
@@ -143,6 +148,110 @@ function saveSubjectsCacheEdits(payload) {
   }
 }
 
+function getEvaluationCreationStatus(runId) {
+  assertAllowedUser_();
+
+  return readEvaluationProgress_(runId);
+}
+
+function createEvaluation(payload) {
+  assertAllowedUser_();
+
+  const runId = String(payload && payload.runId || Utilities.getUuid()).trim();
+  const evaluationName = String(payload && payload.evaluationName || '').trim();
+  const subjectValues = sanitizeOrderedList_(payload && payload.subjectValues);
+  const concepts = sanitizeConcepts_(payload && payload.concepts);
+  const logPrefix = `createEvaluation:${runId}`;
+  const lock = LockService.getScriptLock();
+  let lockAcquired = false;
+
+  Logger.log('%s start name="%s" subjectValues=%s concepts=%s', logPrefix, evaluationName, subjectValues.length, concepts.length);
+  updateEvaluationProgress_(runId, 'running', "S'ha iniciat la creació de l'avaluació.", {
+    stage: 'start',
+    evaluationName,
+    subjectValues: subjectValues.length,
+    concepts: concepts.length
+  });
+
+  try {
+    if (!evaluationName) {
+      Logger.log('%s failed missing evaluation name', logPrefix);
+      throw new Error("Falta el nom de l'avaluació.");
+    }
+
+    if (!subjectValues.length) {
+      Logger.log('%s failed missing subject values', logPrefix);
+      throw new Error('Cal afegir com a mínim un valor per avaluar les matèries.');
+    }
+
+    Logger.log('%s waiting for lock', logPrefix);
+    updateEvaluationProgress_(runId, 'running', "Esperant el bloqueig d'escriptura...", { stage: 'lock_wait' });
+    lock.waitLock(30000);
+    lockAcquired = true;
+    Logger.log('%s lock acquired', logPrefix);
+    updateEvaluationProgress_(runId, 'running', "Bloqueig adquirit. Preparant els fulls...", { stage: 'lock_acquired' });
+
+    const gradesSpreadsheet = openLogicalTableSpreadsheet_(GRADES_TABLE_NAME);
+    const sheetName = normalizeSheetName_(evaluationName);
+    const configSheetName = `${sheetName}_config`;
+
+    Logger.log('%s normalized sheetName="%s" configSheetName="%s"', logPrefix, sheetName, configSheetName);
+    updateEvaluationProgress_(runId, 'running', `Creant els fulls ${sheetName} i ${configSheetName}...`, {
+      stage: 'normalized_names',
+      sheetName,
+      configSheetName
+    });
+
+    if (gradesSpreadsheet.getSheetByName(sheetName)) {
+      Logger.log('%s failed sheet already exists "%s"', logPrefix, sheetName);
+      throw new Error(`Ja existeix el full: ${sheetName}`);
+    }
+
+    if (gradesSpreadsheet.getSheetByName(configSheetName)) {
+      Logger.log('%s failed config sheet already exists "%s"', logPrefix, configSheetName);
+      throw new Error(`Ja existeix el full: ${configSheetName}`);
+    }
+
+    Logger.log('%s inserting sheets', logPrefix);
+    const mainSheet = gradesSpreadsheet.insertSheet(sheetName);
+    const configSheet = gradesSpreadsheet.insertSheet(configSheetName);
+
+    Logger.log('%s registering evaluation', logPrefix);
+    updateEvaluationProgress_(runId, 'running', "Registrant l'avaluació...", { stage: 'registering' });
+    registerEvaluation_(gradesSpreadsheet, evaluationName, sheetName);
+    Logger.log('%s writing config', logPrefix);
+    updateEvaluationProgress_(runId, 'running', 'Escrivint la configuració...', { stage: 'writing_config' });
+    writeEvaluationConfig_(configSheet, subjectValues, concepts);
+    Logger.log('%s populating main sheet', logPrefix);
+    updateEvaluationProgress_(runId, 'running', 'Llegint alumnes de Dinantia i generant files...', { stage: 'populating_main' });
+    const rowsWritten = populateEvaluationSheet_(mainSheet, subjectValues, concepts, logPrefix, runId);
+    Logger.log('%s completed rowsWritten=%s', logPrefix, rowsWritten);
+    updateEvaluationProgress_(runId, 'complete', `Avaluació creada: ${sheetName} (${rowsWritten} files).`, {
+      stage: 'complete',
+      sheetName,
+      configSheetName,
+      rowsWritten
+    });
+
+    return {
+      runId,
+      evaluationName,
+      sheetName,
+      configSheetName,
+      rowsWritten,
+      status: 'evaluation created.'
+    };
+  } catch (error) {
+    updateEvaluationProgress_(runId, 'error', error.message || String(error), { stage: 'error' });
+    throw error;
+  } finally {
+    Logger.log('%s releasing lock', logPrefix);
+    if (lockAcquired) {
+      lock.releaseLock();
+    }
+  }
+}
+
 function buildSubjectsCache() {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -163,13 +272,16 @@ function buildSubjectsCache() {
     );
 
     const groupNamesByUntisName = buildGroupNamesByUntisName_(dinantiaRows);
-    const teacherNamesByCode = buildTeacherNamesByCode_(teacherRows);
+    const teacherInfoByCode = buildTeacherInfoByCode_(teacherRows);
     const subjectNamesByCode = buildSubjectNamesByCode_(subjectRows);
-    const dedupedRows = dedupeGpu001Rows_(gpu001Rows);
+    const dominantTeacherRows = filterGpu001RowsByDominantTeacherHours_(gpu001Rows);
+    const dedupedRows = dedupeGpu001Rows_(dominantTeacherRows);
 
     const cacheRows = dedupedRows.map(row => {
       const groupName = groupNamesByUntisName.get(normalizeCode_(row.group)) || '';
-      const teacherFullName = teacherNamesByCode.get(normalizeCode_(row.profReduit)) || '';
+      const teacherInfo = teacherInfoByCode.get(normalizeCode_(row.profReduit)) || {};
+      const teacherFullName = teacherInfo.fullName || '';
+      const teacherEmail = teacherInfo.email || '';
       const subjectFullName = subjectNamesByCode.get(normalizeCode_(row.matReduit)) || '';
 
       return {
@@ -177,6 +289,7 @@ function buildSubjectsCache() {
         groupName,
         profReduit: row.profReduit,
         teacherFullName,
+        teacherEmail,
         matReduit: row.matReduit,
         subjectFullName,
         subjectDinantiaGroupAv: groupName
@@ -187,6 +300,7 @@ function buildSubjectsCache() {
 
     return {
       rowsRead: gpu001Rows.length,
+      rowsAfterDominantTeacherFilter: dominantTeacherRows.length,
       rowsWritten: cacheRows.length,
       status: 'subjects_cache rebuilt.'
     };
@@ -205,6 +319,7 @@ function readSubjectsCacheRows_() {
     groupName: String(getField_(row, 'group_name') || '').trim(),
     profReduit: String(getField_(row, 'prof_reduit') || '').trim(),
     teacherFullName: String(getField_(row, 'teacher_full_name') || '').trim(),
+    teacherEmail: String(getField_(row, 'teacher_email') || '').trim(),
     matReduit: String(getField_(row, 'mat_reduit') || '').trim(),
     subjectFullName: String(getField_(row, 'subject_full_name') || '').trim(),
     subjectDinantiaGroupAv: String(getField_(row, 'subject_dinantia_group_av') || '').trim()
@@ -218,6 +333,7 @@ function writeSubjectsCacheRows_(rows) {
     'group_name',
     'prof_reduit',
     'teacher_full_name',
+    'teacher_email',
     'mat_reduit',
     'subject_full_name',
     'subject_dinantia_group_av'
@@ -239,6 +355,7 @@ function writeSubjectsCacheRows_(rows) {
     row.groupName,
     row.profReduit,
     row.teacherFullName,
+    row.teacherEmail || '',
     row.matReduit,
     row.subjectFullName,
     row.subjectDinantiaGroupAv
@@ -273,6 +390,369 @@ function groupRowsByName_(rows) {
   }, {});
 }
 
+function updateEvaluationProgress_(runId, status, message, details) {
+  const cleanRunId = String(runId || '').trim();
+  if (!cleanRunId) return;
+
+  const payload = {
+    runId: cleanRunId,
+    status,
+    message,
+    details: details || {},
+    updatedAt: Utilities.formatDate(new Date(), 'Europe/Madrid', "yyyy-MM-dd'T'HH:mm:ss")
+  };
+  const key = evaluationProgressKey_(cleanRunId);
+  const json = JSON.stringify(payload);
+
+  CacheService.getScriptCache().put(key, json, 21600);
+  PropertiesService.getScriptProperties().setProperty(key, json);
+}
+
+function readEvaluationProgress_(runId) {
+  const cleanRunId = String(runId || '').trim();
+  if (!cleanRunId) {
+    throw new Error("Falta l'identificador del procés.");
+  }
+
+  const key = evaluationProgressKey_(cleanRunId);
+  const json = CacheService.getScriptCache().get(key) ||
+    PropertiesService.getScriptProperties().getProperty(key);
+
+  if (!json) {
+    return {
+      runId: cleanRunId,
+      status: 'unknown',
+      message: "No s'ha trobat informació del procés.",
+      details: {},
+      updatedAt: ''
+    };
+  }
+
+  return JSON.parse(json);
+}
+
+function evaluationProgressKey_(runId) {
+  return `evaluation_progress_${runId}`;
+}
+
+function registerEvaluation_(gradesSpreadsheet, evaluationName, sheetName) {
+  const sheet = getRequiredSheet_(gradesSpreadsheet, 'avaluacions');
+  const rows = readRowsByHeader_(sheet);
+  const nextId = rows.reduce((max, row) => {
+    const id = Number(getField_(row, 'id'));
+    return Number.isFinite(id) && id > max ? id : max;
+  }, 0) + 1;
+
+  sheet.appendRow([nextId, evaluationName, sheetName]);
+}
+
+function writeEvaluationConfig_(sheet, subjectValues, concepts) {
+  const creationDate = Utilities.formatDate(new Date(), 'Europe/Madrid', 'yyyyMMdd:HHmm');
+  const headers = ['data de creació', 'Avaluació de les matèries'].concat(
+    concepts.map(concept => concept.name)
+  );
+  const maxRows = Math.max(
+    1,
+    subjectValues.length,
+    ...concepts.map(concept => concept.options.length)
+  );
+  const values = [headers];
+
+  for (let index = 0; index < maxRows; index += 1) {
+    values.push([
+      index === 0 ? creationDate : '',
+      subjectValues[index] || '',
+      ...concepts.map(concept => concept.options[index] || '')
+    ]);
+  }
+
+  sheet.clearContents();
+  sheet.getRange(1, 1, values.length, headers.length).setValues(values);
+  formatEvaluationConfigSheet_(sheet, headers.length);
+}
+
+function populateEvaluationSheet_(sheet, subjectValues, concepts, logPrefix, runId) {
+  const cacheRows = readSubjectsCacheRows_();
+  const groupAliasMap = buildDinantiaGroupAliasMap_();
+  const groupIds = uniqueSorted_(cacheRows.map(row => resolveDinantiaGroupId_(row.subjectDinantiaGroupAv, groupAliasMap)));
+  Logger.log('%s populate cacheRows=%s uniqueDinantiaGroups=%s sampleGroups=%s', logPrefix, cacheRows.length, groupIds.length, groupIds.slice(0, 10).join(','));
+  updateEvaluationProgress_(runId, 'running', `S'han trobat ${cacheRows.length} configuracions i ${groupIds.length} grups de Dinantia.`, {
+    stage: 'cache_loaded',
+    cacheRows: cacheRows.length,
+    dinantiaGroups: groupIds.length
+  });
+  const studentsByGroupId = fetchStudentsByGroupIds_(groupIds, logPrefix, runId);
+  const headers = [
+    'group_name',
+    'teacher_full_name',
+    'teacher_email',
+    'subject_full_name',
+    'student_full_name',
+    'Avaluació de la matèria'
+  ].concat(concepts.map(concept => concept.name), ['student_account_id']);
+  const values = [headers];
+
+  cacheRows.forEach(cacheRow => {
+    const resolvedGroupId = resolveDinantiaGroupId_(cacheRow.subjectDinantiaGroupAv, groupAliasMap);
+    const students = studentsByGroupId.get(resolvedGroupId) || [];
+
+    students.forEach(student => {
+      values.push([
+        cacheRow.groupName,
+        cacheRow.teacherFullName,
+        cacheRow.teacherEmail,
+        cacheRow.subjectFullName,
+        student.name,
+        '',
+        ...concepts.map(() => ''),
+        student.id
+      ]);
+    });
+  });
+
+  Logger.log('%s populate generatedRows=%s', logPrefix, Math.max(values.length - 1, 0));
+  updateEvaluationProgress_(runId, 'running', `Escrivint ${Math.max(values.length - 1, 0)} files al full...`, {
+    stage: 'writing_main',
+    generatedRows: Math.max(values.length - 1, 0)
+  });
+
+  sheet.clearContents();
+  sheet.getRange(1, 1, values.length, headers.length).setValues(values);
+  formatEvaluationMainSheet_(sheet, headers.length, values.length);
+
+  if (values.length > 1) {
+    applyEvaluationValidations_(sheet, values.length - 1, subjectValues, concepts);
+  }
+
+  return values.length - 1;
+}
+
+function formatEvaluationConfigSheet_(sheet, columnCount) {
+  sheet.setFrozenRows(1);
+  sheet.getRange(1, 1, 1, columnCount)
+    .setFontWeight('bold')
+    .setBackground('#e8f0fe')
+    .setFontColor('#202124');
+  sheet.getRange(1, 1, Math.max(sheet.getLastRow(), 1), columnCount)
+    .setVerticalAlignment('middle')
+    .setWrap(true);
+  sheet.autoResizeColumns(1, columnCount);
+}
+
+function formatEvaluationMainSheet_(sheet, columnCount, rowCount) {
+  sheet.setFrozenRows(1);
+  sheet.getRange(1, 1, 1, columnCount)
+    .setFontWeight('bold')
+    .setBackground('#e8f0fe')
+    .setFontColor('#202124');
+  sheet.getRange(1, 1, rowCount, columnCount)
+    .setVerticalAlignment('middle')
+    .setWrap(true);
+  sheet.autoResizeColumns(1, columnCount);
+  sheet.setColumnWidth(1, 150);
+  sheet.setColumnWidth(2, 220);
+  sheet.setColumnWidth(3, 220);
+  sheet.setColumnWidth(4, 220);
+  sheet.setColumnWidth(5, 220);
+  sheet.setColumnWidth(6, 190);
+  sheet.hideColumns(columnCount);
+}
+
+function applyEvaluationValidations_(sheet, dataRowCount, subjectValues, concepts) {
+  const subjectRule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(subjectValues, true)
+    .setAllowInvalid(false)
+    .build();
+
+  sheet.getRange(2, 6, dataRowCount, 1).setDataValidation(subjectRule);
+
+  concepts.forEach((concept, index) => {
+    if (!concept.options.length) return;
+
+    const rule = SpreadsheetApp.newDataValidation()
+      .requireValueInList(concept.options, true)
+      .setAllowInvalid(false)
+      .build();
+
+    sheet.getRange(2, 7 + index, dataRowCount, 1).setDataValidation(rule);
+  });
+}
+
+function fetchStudentsByGroupIds_(groupIds, logPrefix, runId) {
+  const wantedIds = new Set(groupIds.map(id => String(id || '').trim()).filter(Boolean));
+  const studentsByGroupId = new Map(Array.from(wantedIds).map(id => [id, []]));
+
+  if (!wantedIds.size) {
+    Logger.log('%s students no group ids found in subjects_cache', logPrefix);
+    return studentsByGroupId;
+  }
+
+  const accounts = fetchDinantiaCollection_('/v1/accounts/index');
+  Logger.log('%s students all accounts count=%s', logPrefix, accounts.length);
+  updateEvaluationProgress_(runId, 'running', `S'han llegit ${accounts.length} comptes de Dinantia.`, {
+    stage: 'dinantia_accounts_loaded',
+    accounts: accounts.length
+  });
+
+  accounts.forEach(account => {
+    if (!isStudentAccount_(account)) return;
+
+    const student = {
+      id: account.id,
+      name: String(account.name || '').trim()
+    };
+
+    if (!student.name) return;
+
+    extractAccountGroupIds_(account).map(normalizeDinantiaGroupId_).forEach(groupId => {
+      if (!wantedIds.has(groupId)) return;
+
+      studentsByGroupId.get(groupId).push(student);
+    });
+  });
+
+  sortStudentsByGroup_(studentsByGroupId);
+  const matchedGroups = Array.from(studentsByGroupId.values()).filter(students => students.length).length;
+  const indexedRows = Array.from(studentsByGroupId.values()).reduce((sum, students) => sum + students.length, 0);
+  Logger.log('%s students matched groups=%s rows=%s', logPrefix, matchedGroups, indexedRows);
+  updateEvaluationProgress_(runId, 'running', `Alumnes indexats: ${indexedRows} en ${matchedGroups} grups.`, {
+    stage: 'student_index_built',
+    matchedGroups,
+    indexedRows
+  });
+
+  return studentsByGroupId;
+}
+
+function sortStudentsByGroup_(studentsByGroupId) {
+  Array.from(studentsByGroupId.keys()).forEach(groupId => {
+    studentsByGroupId.set(groupId, studentsByGroupId.get(groupId)
+      .sort((a, b) => a.name.localeCompare(b.name, 'ca')));
+  });
+}
+
+function extractStudentsFromGroupPayload_(payload) {
+  const studentsById = new Map();
+
+  collectStudentAccounts_(payload, '', studentsById);
+
+  return Array.from(studentsById.values());
+}
+
+function collectStudentAccounts_(value, contextKey, studentsById) {
+  if (!value) return;
+
+  if (Array.isArray(value)) {
+    value.forEach(item => collectStudentAccounts_(item, contextKey, studentsById));
+    return;
+  }
+
+  if (typeof value !== 'object') return;
+
+  const id = String(value.id || value.account_id || '').trim();
+  const name = String(value.name || value.full_name || '').trim();
+  const key = String(contextKey || '').toLowerCase();
+  const isStudentContext = key.indexOf('student') !== -1 || key.indexOf('member') !== -1 || key.indexOf('account') !== -1;
+
+  if (id && name && (isStudentContext || isStudentAccount_(value))) {
+    studentsById.set(id, { id, name });
+  }
+
+  Object.keys(value).forEach(childKey => {
+    collectStudentAccounts_(value[childKey], childKey, studentsById);
+  });
+}
+
+function isStudentAccount_(account) {
+  const roles = Array.isArray(account.roles) ? account.roles : [account.roles];
+  return roles.some(role => normalizeCode_(role && (role.name || role.id || role)) === 'STUDENT');
+}
+
+function extractAccountGroupIds_(account) {
+  const ids = new Set();
+
+  collectGroupIds_(account.groups, ids);
+
+  return Array.from(ids);
+}
+
+function collectGroupIds_(value, ids) {
+  if (!value) return;
+
+  if (Array.isArray(value)) {
+    value.forEach(item => collectGroupIds_(item, ids));
+    return;
+  }
+
+  if (typeof value === 'string') {
+    const id = value.trim();
+    if (id) ids.add(id);
+    return;
+  }
+
+  if (typeof value === 'object') {
+    if (value.id) ids.add(String(value.id).trim());
+    if (value.group_id) ids.add(String(value.group_id).trim());
+    if (value.group && typeof value.group === 'object') collectGroupIds_(value.group, ids);
+
+    Object.keys(value).forEach(key => {
+      if (/^\d+$/.test(key)) ids.add(key);
+      collectGroupIds_(value[key], ids);
+    });
+  }
+}
+
+function sanitizeList_(values) {
+  return Array.isArray(values)
+    ? uniqueSorted_(values.map(value => String(value || '').trim()))
+    : [];
+}
+
+function sanitizeOrderedList_(values) {
+  const seen = new Set();
+  const result = [];
+
+  if (!Array.isArray(values)) return result;
+
+  values.forEach(value => {
+    const cleanValue = String(value || '').trim();
+    const key = normalizeCode_(cleanValue);
+    if (!cleanValue || seen.has(key)) return;
+
+    seen.add(key);
+    result.push(cleanValue);
+  });
+
+  return result;
+}
+
+function sanitizeConcepts_(concepts) {
+  if (!Array.isArray(concepts)) return [];
+
+  return concepts
+    .map(concept => ({
+      name: String(concept && concept.name || '').trim(),
+      options: sanitizeOrderedList_(concept && concept.options)
+    }))
+    .filter(concept => concept.name);
+}
+
+function normalizeSheetName_(value) {
+  const normalized = String(value || '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+  if (!normalized) {
+    throw new Error("El nom de l'avaluació no genera un nom de full vàlid.");
+  }
+
+  return normalized.slice(0, 80);
+}
+
 function fetchDinantiaGroups_() {
   const groups = fetchDinantiaCollection_('/v1/groups/index');
 
@@ -280,20 +760,57 @@ function fetchDinantiaGroups_() {
     .map(group => ({
       id: group.id,
       name: String(group.id || '').trim(),
+      rawName: group.name,
       tag: group.tag
     }))
     .filter(group => group.name);
 }
 
-function fetchDinantiaCollection_(path) {
+function buildDinantiaGroupAliasMap_() {
+  const aliases = new Map();
+
+  fetchDinantiaGroups_().forEach(group => {
+    const id = normalizeDinantiaGroupId_(group.id);
+    if (!id) return;
+
+    [
+      group.id,
+      group.name,
+      group.rawName,
+      group.tag
+    ].forEach(alias => {
+      const key = normalizeGroupAlias_(alias);
+      if (key) aliases.set(key, id);
+    });
+  });
+
+  return aliases;
+}
+
+function resolveDinantiaGroupId_(value, groupAliasMap) {
+  const cleanValue = String(value || '').trim();
+  if (!cleanValue) return '';
+
+  return groupAliasMap.get(normalizeGroupAlias_(cleanValue)) || normalizeDinantiaGroupId_(cleanValue);
+}
+
+function normalizeDinantiaGroupId_(value) {
+  return String(value || '').trim();
+}
+
+function normalizeGroupAlias_(value) {
+  return normalizeCode_(String(value || '').trim());
+}
+
+function fetchDinantiaCollection_(path, baseParams) {
   const allRecords = [];
   let page = 1;
 
   while (true) {
-    const response = fetchDinantia_(path, {
+    const response = fetchDinantia_(path, Object.assign({}, baseParams || {}, {
       limit: 100,
       page
-    });
+    }));
 
     allRecords.push.apply(allRecords, response.data || []);
 
@@ -348,15 +865,22 @@ function fetchDinantia_(path, params) {
 }
 
 function findTeacherCodeByName_(teacherFullName) {
+  return findTeacherInfoByName_(teacherFullName).code;
+}
+
+function findTeacherInfoByName_(teacherFullName) {
   const target = normalizeCode_(teacherFullName);
-  if (!target) return '';
+  if (!target) return { code: '', email: '' };
 
   const teacherRows = readRowsByHeader_(
     getRequiredSheet_(openLogicalTableSpreadsheet_(TEACHERS_TABLE_NAME), TEACHERS_SHEET_NAME)
   );
 
   const match = teacherRows.find(row => normalizeCode_(buildTeacherFullName_(row)) === target);
-  return match ? String(getField_(match, 'REDUIT', 'REDUÏT') || '').trim() : '';
+  return match ? {
+    code: String(getField_(match, 'REDUIT', 'REDUÏT') || '').trim(),
+    email: getTeacherEmail_(match)
+  } : { code: '', email: '' };
 }
 
 function findSubjectCodeByName_(subjectFullName) {
@@ -413,6 +937,53 @@ function dedupeGpu001Rows_(rows) {
   return deduped;
 }
 
+function filterGpu001RowsByDominantTeacherHours_(rows) {
+  const teacherHoursByGroupSubject = new Map();
+
+  rows.forEach(row => {
+    const groupSubjectKey = [
+      normalizeCode_(row.group),
+      normalizeCode_(row.matReduit)
+    ].join('||');
+    const teacherKey = normalizeCode_(row.profReduit);
+
+    if (!groupSubjectKey || !teacherKey) return;
+
+    if (!teacherHoursByGroupSubject.has(groupSubjectKey)) {
+      teacherHoursByGroupSubject.set(groupSubjectKey, new Map());
+    }
+
+    const teacherHours = teacherHoursByGroupSubject.get(groupSubjectKey);
+    teacherHours.set(teacherKey, (teacherHours.get(teacherKey) || 0) + 1);
+  });
+
+  const keptTeachersByGroupSubject = new Map();
+
+  teacherHoursByGroupSubject.forEach((teacherHours, groupSubjectKey) => {
+    const maxHours = Math.max.apply(null, Array.from(teacherHours.values()));
+    const keptTeachers = new Set();
+
+    teacherHours.forEach((hours, teacherKey) => {
+      if (hours === maxHours) {
+        keptTeachers.add(teacherKey);
+      }
+    });
+
+    keptTeachersByGroupSubject.set(groupSubjectKey, keptTeachers);
+  });
+
+  return rows.filter(row => {
+    const groupSubjectKey = [
+      normalizeCode_(row.group),
+      normalizeCode_(row.matReduit)
+    ].join('||');
+    const teacherKey = normalizeCode_(row.profReduit);
+    const keptTeachers = keptTeachersByGroupSubject.get(groupSubjectKey);
+
+    return !keptTeachers || keptTeachers.has(teacherKey);
+  });
+}
+
 function buildGroupNamesByUntisName_(rows) {
   const map = new Map();
 
@@ -434,17 +1005,44 @@ function buildGroupNamesByUntisName_(rows) {
   return map;
 }
 
-function buildTeacherNamesByCode_(rows) {
+function buildTeacherInfoByCode_(rows) {
   const map = new Map();
 
   rows.forEach(row => {
     const reduit = normalizeCode_(getField_(row, 'REDUIT', 'REDUÏT'));
     if (!reduit) return;
 
-    map.set(reduit, buildTeacherFullName_(row));
+    map.set(reduit, {
+      fullName: buildTeacherFullName_(row),
+      email: getTeacherEmail_(row)
+    });
   });
 
   return map;
+}
+
+function getTeacherEmail_(teacherRow) {
+  const preferredEmail = String(getField_(
+    teacherRow,
+    'CORREU',
+    'EMAIL',
+    'E-MAIL',
+    'MAIL',
+    'CORREU ELECTRONIC',
+    'CORREU ELECTRÒNIC',
+    'XTEC'
+  ) || '').trim();
+
+  if (looksLikeEmail_(preferredEmail)) {
+    return preferredEmail;
+  }
+
+  const values = Object.keys(teacherRow)
+    .map(key => String(teacherRow[key] || '').trim())
+    .filter(Boolean);
+  const detectedEmail = values.find(looksLikeEmail_);
+
+  return detectedEmail || preferredEmail;
 }
 
 function buildSubjectNamesByCode_(rows) {
@@ -588,6 +1186,10 @@ function normalizeCode_(value) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toUpperCase();
+}
+
+function looksLikeEmail_(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
 }
 
 function isAllowedUser_() {

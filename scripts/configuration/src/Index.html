@@ -78,7 +78,8 @@
         font-weight: 700;
       }
 
-      select {
+      select,
+      input[type="text"] {
         width: 100%;
         min-height: 40px;
         border: 1px solid var(--line);
@@ -89,7 +90,8 @@
         padding: 0 10px;
       }
 
-      select:focus {
+      select:focus,
+      input[type="text"]:focus {
         border-color: var(--accent);
         outline: 2px solid rgba(37, 99, 235, 0.18);
       }
@@ -141,9 +143,34 @@
         opacity: 0.65;
       }
 
+      .delete-button {
+        display: inline-grid;
+        place-items: center;
+        width: 36px;
+        height: 36px;
+        border: 0;
+        border-radius: 999px;
+        background: var(--danger);
+        color: #fff;
+        font-size: 22px;
+        line-height: 1;
+        cursor: pointer;
+      }
+
+      .delete-button:hover {
+        background: #8c1d18;
+      }
+
       .refresh-bubble {
         position: fixed;
         right: 24px;
+        bottom: 24px;
+        z-index: 20;
+      }
+
+      .create-bubble {
+        position: fixed;
+        right: 82px;
         bottom: 24px;
         z-index: 20;
       }
@@ -181,6 +208,18 @@
         box-shadow: 0 18px 60px rgba(32, 33, 36, 0.22);
       }
 
+      .modal.large {
+        width: min(760px, 100%);
+        max-height: min(86vh, 840px);
+        overflow: auto;
+      }
+
+      .modal h1 {
+        margin: 0 0 18px;
+        font-size: 28px;
+        letter-spacing: 0;
+      }
+
       .modal h2 {
         margin: 0 0 12px;
         font-size: 22px;
@@ -191,6 +230,51 @@
         margin: 10px 0;
         color: var(--text);
         line-height: 1.45;
+      }
+
+      .form-section {
+        display: grid;
+        gap: 12px;
+        margin-top: 20px;
+      }
+
+      .form-section h2 {
+        margin: 8px 0 0;
+        font-size: 20px;
+        letter-spacing: 0;
+      }
+
+      .subtitle {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
+      .dynamic-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .dynamic-row {
+        display: grid;
+        grid-template-columns: 1fr 36px;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .concept {
+        display: grid;
+        gap: 8px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+      }
+
+      .concept-options {
+        display: grid;
+        gap: 8px;
+        margin-left: 28px;
       }
 
       .modal-actions {
@@ -276,17 +360,48 @@
       <section id="empty" class="empty">Selecciona un grup per editar la configuració.</section>
     </main>
 
+    <button id="create-evaluation" class="icon-button create-bubble" type="button" aria-label="Crear avaluació">☑</button>
     <button id="refresh" class="icon-button refresh-bubble" type="button" aria-label="Reconstruir cache">↻</button>
 
-    <div id="modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div id="rebuild-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="rebuild-modal-title">
       <div class="modal">
-        <h2 id="modal-title">Reconstruir la cache?</h2>
+        <h2 id="rebuild-modal-title">Reconstruir la cache?</h2>
         <p>Aquesta acció esborrarà totes les dades actuals de la cache i les substituirà amb les dades generades a partir de l'horari GPU001.</p>
         <p>Qualsevol canvi manual fet en aquesta pantalla es pot perdre.</p>
         <p>Vols continuar?</p>
         <div class="modal-actions">
           <button id="cancel-rebuild" class="text-button" type="button">Cancel·lar</button>
           <button id="confirm-rebuild" class="danger-button" type="button">Continuar i reconstruir</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="evaluation-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="evaluation-modal-title">
+      <div class="modal large">
+        <h1 id="evaluation-modal-title">Crear una avaluació</h1>
+
+        <label>
+          Nom de l'avaluació
+          <input id="evaluation-name" type="text" placeholder="p.e. 1a avaluació">
+        </label>
+
+        <section class="form-section">
+          <h2>Avaluació de les matèries</h2>
+          <p class="subtitle">Introdueix els valors que podran triar els professors per avaluar cada matèria.</p>
+          <div id="subject-values" class="dynamic-list"></div>
+          <button id="add-subject-value" class="icon-button" type="button" aria-label="Afegir valor de matèria">+</button>
+        </section>
+
+        <section class="form-section">
+          <h2>Altres conceptes a avaluar</h2>
+          <p class="subtitle">A continuació afegeix altres conceptes que vulguis avaluar. Els conceptes poden avaluar-se amb un text obert o amb un desplegable de diferents opcions.</p>
+          <div id="concepts" class="dynamic-list"></div>
+          <button id="add-concept" class="icon-button" type="button" aria-label="Afegir concepte">+</button>
+        </section>
+
+        <div class="modal-actions">
+          <button id="cancel-evaluation" class="text-button" type="button">Cancel·lar</button>
+          <button id="confirm-evaluation" class="danger-button" type="button">OK</button>
         </div>
       </div>
     </div>
@@ -301,14 +416,20 @@
           dinantiaGroups: []
         }
       };
+      let evaluationProgressTimer = null;
 
       document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('group-selector').addEventListener('change', renderSelectedGroup);
         document.getElementById('add-row').addEventListener('click', addEditableRow);
         document.getElementById('save').addEventListener('click', saveRows);
-        document.getElementById('refresh').addEventListener('click', openModal);
-        document.getElementById('cancel-rebuild').addEventListener('click', closeModal);
+        document.getElementById('refresh').addEventListener('click', openRebuildModal);
+        document.getElementById('create-evaluation').addEventListener('click', openEvaluationModal);
+        document.getElementById('cancel-rebuild').addEventListener('click', closeRebuildModal);
         document.getElementById('confirm-rebuild').addEventListener('click', rebuildCache);
+        document.getElementById('cancel-evaluation').addEventListener('click', closeEvaluationModal);
+        document.getElementById('confirm-evaluation').addEventListener('click', createEvaluation);
+        document.getElementById('add-subject-value').addEventListener('click', () => addSubjectValueInput(''));
+        document.getElementById('add-concept').addEventListener('click', () => addConceptInput('', ['']));
         loadData();
       });
 
@@ -462,16 +583,16 @@
           });
       }
 
-      function openModal() {
-        document.getElementById('modal').classList.add('open');
+      function openRebuildModal() {
+        document.getElementById('rebuild-modal').classList.add('open');
       }
 
-      function closeModal() {
-        document.getElementById('modal').classList.remove('open');
+      function closeRebuildModal() {
+        document.getElementById('rebuild-modal').classList.remove('open');
       }
 
       function rebuildCache() {
-        closeModal();
+        closeRebuildModal();
         setBusy(true);
         setStatus('Reconstruint cache...');
 
@@ -488,13 +609,188 @@
           .buildSubjectsCache();
       }
 
+      function openEvaluationModal() {
+        document.getElementById('evaluation-name').value = '';
+        document.getElementById('subject-values').innerHTML = '';
+        document.getElementById('concepts').innerHTML = '';
+
+        [
+          'No assolit',
+          'Assoliment satisfactori',
+          'Assoliment notable',
+          'Assoliment excel·lent'
+        ].forEach(value => addSubjectValueInput(value));
+
+        addConceptInput('', ['']);
+        document.getElementById('evaluation-modal').classList.add('open');
+      }
+
+      function closeEvaluationModal() {
+        document.getElementById('evaluation-modal').classList.remove('open');
+      }
+
+      function addSubjectValueInput(value) {
+        const container = document.getElementById('subject-values');
+        const row = document.createElement('div');
+        row.className = 'dynamic-row';
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = value || '';
+
+        row.append(input, createDeleteButton('Eliminar valor de matèria', () => row.remove()));
+        container.appendChild(row);
+      }
+
+      function addConceptInput(name, options) {
+        const container = document.getElementById('concepts');
+        const concept = document.createElement('div');
+        concept.className = 'concept';
+
+        const nameRow = document.createElement('div');
+        nameRow.className = 'dynamic-row';
+
+        const nameInput = document.createElement('input');
+        nameInput.type = 'text';
+        nameInput.placeholder = 'Nom del concepte';
+        nameInput.value = name || '';
+        nameInput.dataset.role = 'concept-name';
+
+        nameRow.append(nameInput, createDeleteButton('Eliminar concepte', () => concept.remove()));
+
+        const optionContainer = document.createElement('div');
+        optionContainer.className = 'concept-options';
+
+        const optionValues = Array.isArray(options) && options.length ? options : [''];
+        optionValues.forEach(option => addConceptOptionInput(optionContainer, option));
+
+        const addOptionButton = document.createElement('button');
+        addOptionButton.className = 'icon-button';
+        addOptionButton.type = 'button';
+        addOptionButton.textContent = '+';
+        addOptionButton.setAttribute('aria-label', 'Afegir opció del concepte');
+        addOptionButton.addEventListener('click', () => addConceptOptionInput(optionContainer, ''));
+
+        concept.append(nameRow, optionContainer, addOptionButton);
+        container.appendChild(concept);
+      }
+
+      function addConceptOptionInput(container, value) {
+        const row = document.createElement('div');
+        row.className = 'dynamic-row';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = 'Opció';
+        input.value = value || '';
+        input.dataset.role = 'concept-option';
+        row.append(input, createDeleteButton('Eliminar opció', () => row.remove()));
+        container.appendChild(row);
+      }
+
+      function createDeleteButton(label, onClick) {
+        const button = document.createElement('button');
+        button.className = 'delete-button';
+        button.type = 'button';
+        button.textContent = '×';
+        button.setAttribute('aria-label', label);
+        button.addEventListener('click', onClick);
+        return button;
+      }
+
+      function createEvaluation() {
+        stopEvaluationProgressPolling();
+
+        const evaluationName = document.getElementById('evaluation-name').value.trim();
+        const subjectValues = Array.from(document.querySelectorAll('#subject-values input'))
+          .map(input => input.value.trim())
+          .filter(Boolean);
+        const concepts = Array.from(document.querySelectorAll('#concepts .concept'))
+          .map(concept => ({
+            name: concept.querySelector('[data-role="concept-name"]').value.trim(),
+            options: Array.from(concept.querySelectorAll('[data-role="concept-option"]'))
+              .map(input => input.value.trim())
+              .filter(Boolean)
+          }))
+          .filter(concept => concept.name);
+
+        if (!evaluationName) {
+          setStatus("Falta el nom de l'avaluació.", 'error');
+          return;
+        }
+
+        closeEvaluationModal();
+        setBusy(true);
+        const runId = createRunId();
+        setStatus("S'ha iniciat la creació de l'avaluació. El procés pot trigar uns minuts...");
+        pollEvaluationProgress(runId);
+
+        google.script.run
+          .withSuccessHandler(result => {
+            stopEvaluationProgressPolling();
+            setBusy(false);
+            setStatus(`Avaluació creada: ${result.sheetName} (${result.rowsWritten} files).`, 'success');
+          })
+          .withFailureHandler(error => {
+            stopEvaluationProgressPolling();
+            setBusy(false);
+            showError(error);
+          })
+          .createEvaluation({
+            runId,
+            evaluationName,
+            subjectValues,
+            concepts
+          });
+      }
+
+      function createRunId() {
+        if (window.crypto && window.crypto.randomUUID) {
+          return window.crypto.randomUUID();
+        }
+
+        return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      }
+
+      function pollEvaluationProgress(runId) {
+        evaluationProgressTimer = window.setTimeout(() => {
+          google.script.run
+            .withSuccessHandler(progress => {
+              if (progress && progress.message) {
+                setStatus(progress.message, progress.status === 'error' ? 'error' : '');
+              }
+
+              if (progress && (progress.status === 'complete' || progress.status === 'error')) {
+                stopEvaluationProgressPolling();
+                return;
+              }
+
+              pollEvaluationProgress(runId);
+            })
+            .withFailureHandler(() => {
+              pollEvaluationProgress(runId);
+            })
+            .getEvaluationCreationStatus(runId);
+        }, 2500);
+      }
+
+      function stopEvaluationProgressPolling() {
+        if (!evaluationProgressTimer) return;
+
+        window.clearTimeout(evaluationProgressTimer);
+        evaluationProgressTimer = null;
+      }
+
       function setBusy(isBusy) {
         document.getElementById('refresh').disabled = isBusy;
+        document.getElementById('create-evaluation').disabled = isBusy;
         document.getElementById('save').disabled = isBusy;
         document.getElementById('add-row').disabled = isBusy;
         document.getElementById('group-selector').disabled = isBusy;
         document.querySelectorAll('select').forEach(select => {
           select.disabled = isBusy;
+        });
+        document.querySelectorAll('input, .modal button').forEach(control => {
+          control.disabled = isBusy;
         });
       }
 

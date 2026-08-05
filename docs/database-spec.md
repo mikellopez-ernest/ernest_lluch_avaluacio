@@ -75,7 +75,7 @@ Row 1 contains headers. Data starts in row 2.
 | I | `DNI` | ID document value. |
 | J | `TELF` | Phone number. |
 | K | `XTEC` | XTEC email. |
-| L | `CORREU` | Institutional/main email. |
+| L | `CORREU` | Institutional/main email. Preferred source for `subjects_cache.teacher_email`. |
 | M | `NOUS` | New teacher boolean flag. |
 | N | `ACTIU` | Active teacher boolean flag. |
 | O | `BAIXA?` | Leave-of-absence boolean flag. |
@@ -343,23 +343,31 @@ The cache-building function must be public so it can be run directly.
 | C | `group_name` | Resolved Dinantia group name. |
 | D | `prof_reduit` | Value from `Horaris` -> `GPU001` column C. |
 | E | `teacher_full_name` | Resolved teacher full name from `Llista`: `NOM COGNOM1 COGNOM2`. |
-| F | `mat_reduit` | Value from `Horaris` -> `GPU001` column D. |
-| G | `subject_full_name` | Resolved subject display name from `assignatures.full_name`. |
-| H | `subject_dinantia_group_av` | Dinantia group ID selected for assessment. Defaults to `group_name` when rebuilt from `GPU001`. |
+| F | `teacher_email` | Resolved teacher email from `Llista.CORREU`. |
+| G | `mat_reduit` | Value from `Horaris` -> `GPU001` column D. |
+| H | `subject_full_name` | Resolved subject display name from `assignatures.full_name`. |
+| I | `subject_dinantia_group_av` | Dinantia group ID selected for assessment. Defaults to `group_name` when rebuilt from `GPU001`. |
+
+Important: Dinantia group IDs are strings and can look like human-readable group names, for example `1r ESO A`. Do not assume numeric IDs.
 
 ### subjects_cache Build Flow
 
 1. Read all rows from `Horaris` -> `GPU001` into an in-memory array.
-2. Deduplicate the in-memory array before writing the cache.
-3. Two `GPU001` rows are duplicates when columns B, C, and D all match at the same time:
+2. Group rows by `group + subject`.
+3. For each `group + subject`, count how many scheduled rows/hours each teacher has.
+4. Keep only the teacher or teachers with the highest hour count for that `group + subject`.
+5. If multiple teachers are tied for the highest hour count, keep all tied teachers.
+6. Delete rows for teachers with fewer hours in that `group + subject`.
+7. Deduplicate the remaining in-memory array before writing the cache.
+8. Two remaining `GPU001` rows are duplicates when columns B, C, and D all match at the same time:
    - B: group/class code
    - C: teacher code
    - D: subject code
-4. After deduplication, resolve group, teacher, and subject display values.
-5. Delete rows without a resolved `group_name`.
-6. Sort rows by `group_name`.
-7. Clear/rewrite `Grades` -> `subjects_cache` entirely.
-8. Write headers and all derived rows.
+9. After deduplication, resolve group, teacher, teacher email, and subject display values.
+10. Delete rows without a resolved `group_name`.
+11. Sort rows by `group_name`.
+12. Clear/rewrite `Grades` -> `subjects_cache` entirely.
+13. Write headers and all derived rows.
 
 ### subjects_cache Field Resolution
 
@@ -389,6 +397,15 @@ subjects_cache.teacher_full_name = Dades de professors.Llista NOM + COGNOM1 + CO
 where Horaris.GPU001 column C = Dades de professors.Llista.REDUIT / REDUÏT
 ```
 
+`teacher_email`:
+
+```text
+subjects_cache.teacher_email = Dades de professors.Llista.CORREU
+where Horaris.GPU001 column C = Dades de professors.Llista.REDUIT / REDUÏT
+```
+
+If `CORREU` is blank or unavailable, the implementation may fall back to other email-like teacher fields, especially `XTEC`, and finally the first value in the teacher row that looks like an email address.
+
 `mat_reduit`:
 
 ```text
@@ -409,6 +426,8 @@ subjects_cache.subject_dinantia_group_av = Dinantia group id selected in the end
 ```
 
 When `subjects_cache` is rebuilt from `GPU001`, this field may initially be filled with `group_name` as a fallback. Manual endpoint edits should replace it with a Dinantia group ID.
+
+For compatibility, any process that consumes `subject_dinantia_group_av` must resolve the value against Dinantia group `id`, `name`, and `tag`. The resolved group ID is the value used to match students.
 
 If group, teacher, or subject references cannot be resolved, the cache builder should preserve the source code and leave the unresolved display value blank or fall back to the source code when a user-facing value is required.
 
@@ -431,6 +450,8 @@ Public functions:
 | `buildSubjectsCache` | Dangerous full rebuild of `Grades` -> `subjects_cache` from `Horaris` -> `GPU001`. |
 | `getConfigurationData` | Frontend data loader for the configuration endpoint. |
 | `saveSubjectsCacheEdits` | Frontend save handler for manual edits to `Grades` -> `subjects_cache`. |
+| `createEvaluation` | Frontend handler that creates an evaluation sheet, config sheet, registry row, and student-subject rows. |
+| `getEvaluationCreationStatus` | Frontend polling handler for long-running evaluation creation progress. |
 
 All other functions must be private helpers with a trailing `_`.
 
@@ -445,6 +466,7 @@ The endpoint must show:
 5. Two buttons under the editable list:
    - `+` to add a line.
    - 3.5-inch disk icon to save.
+6. A second floating bottom-right button, left of the refresh button, with a document/check icon and accessible name `Crear avaluació`.
 
 Editable row fields:
 
@@ -466,6 +488,8 @@ Dropdown option lists are calculated once when loading the page.
 | `Assignatura` | Unique `subjects_cache.subject_full_name` values. | Alphabetical. |
 | `Professor` | Unique `subjects_cache.teacher_full_name` values. | Alphabetical. |
 | `Grup d'alumnes per avaluar` | Dinantia API group IDs from `GET /v1/groups/index`. | Alphabetical. |
+
+The `Grup d'alumnes per avaluar` dropdown displays and saves the Dinantia group ID. This ID may be a readable string such as `1r ESO A`.
 
 ### Save Behavior
 
@@ -505,6 +529,149 @@ Continuar i reconstruir
 ```
 
 `buildSubjectsCache` is dangerous because it fully rewrites `subjects_cache` from `GPU001` and can overwrite manual edits.
+
+### Create Evaluation UI
+
+The `Crear avaluació` floating button opens a modal.
+
+Modal content:
+
+| Element | Text / Behavior |
+| --- | --- |
+| `H1` | `Crear una avaluació` |
+| Text input label | `Nom de l'avaluació` |
+| Text input placeholder | `p.e. 1a avaluació` |
+| `H2` | `Avaluació de les matèries` |
+| Subtitle | `Introdueix els valors que podran triar els professors per avaluar cada matèria.` |
+| Dynamic inputs | One text input per subject-evaluation value, with `+` to add more. |
+| `H2` | `Altres conceptes a avaluar` |
+| Subtitle | `A continuació afegeix altres conceptes que vulguis avaluar. Els conceptes poden avaluar-se amb un text obert o amb un desplegable de diferents opcions.` |
+| Dynamic concept inputs | One text input per concept name, with `+` to add concepts. |
+| Concept option inputs | Under each concept, indented right, one text input per option, with `+` to add more options. |
+
+If a concept has no options, that concept is evaluated with open text.
+
+The modal must include delete controls:
+
+| Item | Delete behavior |
+| --- | --- |
+| Subject-evaluation value | Red cross button removes that value input. |
+| Extra concept | Red cross button removes the concept and its options. |
+| Concept option | Red cross button removes that option input. |
+
+There must not be a `+` button beside the evaluation-name input. The only add buttons are:
+
+1. Add subject-evaluation value.
+2. Add extra concept.
+3. Add option inside each extra concept.
+
+When creation starts, the modal closes and the page shows a short message in Catalan explaining that the process has started and may take a few minutes.
+
+While evaluation creation is running, the frontend must poll `getEvaluationCreationStatus(runId)` and show the latest stage message in the page status area.
+
+### Create Evaluation Behavior
+
+When the user confirms the create-evaluation modal:
+
+1. Normalize `Nom de l'avaluació` to snake_case without accents.
+2. Create a blank main evaluation sheet in the `Grades` spreadsheet using the normalized name.
+3. Create a config sheet named `{evaluation_sheet_name}_config`.
+4. Register the new evaluation in `Grades` -> `avaluacions`.
+5. Fill the config sheet.
+6. Fill the main evaluation sheet from `Grades` -> `subjects_cache` expanded by Dinantia students.
+
+If either target sheet already exists, the script must fail with a clear error and avoid overwriting existing data.
+
+The process can be long. It must use bulk reads/writes where possible and should log major stages with a per-run identifier:
+
+| Stage | Log purpose |
+| --- | --- |
+| start | Evaluation name, subject-value count, concept count. |
+| lock | Waiting for and acquiring the script lock. |
+| normalized names | Main and config sheet names. |
+| inserting sheets | New sheet creation started. |
+| registering evaluation | `avaluacions` append started. |
+| writing config | Config sheet write started. |
+| populating main sheet | Student expansion started. |
+| student index | Number of accounts read, groups matched, and student rows indexed. |
+| completion | Rows written to the main evaluation sheet. |
+| release | Lock released. |
+
+#### Evaluation Registry Row
+
+Append one row to `Grades` -> `avaluacions`:
+
+| Column | Value |
+| --- | --- |
+| `id` | Next autonumeric value. |
+| `nom_av` | Original evaluation name entered by the user. |
+| `sheet_name` | Normalized main evaluation sheet name. |
+
+#### Config Sheet Layout
+
+Config sheet name:
+
+```text
+{evaluation_sheet_name}_config
+```
+
+| Column | Header | Values |
+| --- | --- | --- |
+| A | `data de creació` | Row 2 contains creation datetime formatted as `yyyymmdd:HHmm`. |
+| B | `Avaluació de les matèries` | Row 2 onward contains the subject-evaluation values. |
+| C onward | Concept name | Row 2 onward contains allowed option values. Blank/no values means open text. |
+
+#### Main Evaluation Sheet Layout
+
+The main evaluation sheet is generated from `Grades` -> `subjects_cache`.
+
+For each `subjects_cache` row:
+
+1. Read `subject_dinantia_group_av`.
+2. Resolve it against Dinantia groups by `id`, `name`, or `tag`.
+3. Prefer storing and using the resolved Dinantia group ID.
+4. Use an in-memory student index built from Dinantia accounts.
+5. Match the resolved Dinantia group ID against each student account's `groups.member` values.
+6. Create one main-sheet row per matched student.
+
+Main sheet columns:
+
+| Column | Header | Source / Behavior |
+| --- | --- | --- |
+| A | `group_name` | `subjects_cache.group_name`. |
+| B | `teacher_full_name` | `subjects_cache.teacher_full_name`. |
+| C | `teacher_email` | `subjects_cache.teacher_email`. |
+| D | `subject_full_name` | `subjects_cache.subject_full_name`. |
+| E | `student_full_name` | Full student name from Dinantia. |
+| F | `Avaluació de la matèria` | User-editable dropdown using config column B values. |
+| G onward | Extra concept name | One column per extra concept from the config sheet. Dropdown validation when the concept has options; open text when it has none. |
+| Last hidden column | `student_account_id` | Dinantia student account ID. Hidden from normal users and reserved for future sync workflows. |
+
+The main sheet must be written in bulk, not row by row.
+
+The main evaluation sheet must be formatted after writing:
+
+1. Freeze the header row.
+2. Bold the header row.
+3. Apply a light header background.
+4. Wrap cell text.
+5. Auto-resize columns.
+6. Hide `student_account_id`.
+
+The config sheet must also freeze and format its header row.
+
+Dinantia students must be indexed by group ID in memory while creating the sheet so the same group is not fetched repeatedly.
+
+Student index flow:
+
+1. Read all Dinantia accounts from `GET /v1/accounts/index` using pagination.
+2. Keep only accounts whose `roles` contain `Student`.
+3. For each student, recurse through `account.groups`.
+4. Collect string values, especially values in `account.groups.member`.
+5. Add the student to every collected group ID.
+6. Sort students alphabetically by full name inside each group.
+
+Do not call Dinantia once per `subjects_cache` row. Do not depend on `groups/view/:id` containing member lists.
 
 ## Implementation Requirements
 
