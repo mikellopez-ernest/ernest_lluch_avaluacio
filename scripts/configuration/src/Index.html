@@ -103,6 +103,26 @@
         gap: 12px;
       }
 
+      .cache-row {
+        position: relative;
+        padding-right: 42px;
+      }
+
+      .cache-row-delete {
+        position: absolute;
+        right: 0;
+        top: 2px;
+        opacity: 0;
+        transform: scale(0.94);
+        transition: opacity 120ms ease, transform 120ms ease;
+      }
+
+      .cache-row:hover .cache-row-delete,
+      .cache-row:focus-within .cache-row-delete {
+        opacity: 1;
+        transform: scale(1);
+      }
+
       .editor-header {
         margin-bottom: 8px;
         color: var(--muted);
@@ -255,6 +275,27 @@
         gap: 10px;
       }
 
+      .group-checks {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 8px 14px;
+        max-height: 180px;
+        overflow: auto;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+      }
+
+      .check-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--text);
+        font-size: 14px;
+        font-weight: 400;
+      }
+
       .dynamic-row {
         display: grid;
         grid-template-columns: 1fr 36px;
@@ -323,6 +364,7 @@
         .cache-row {
           grid-template-columns: 1fr;
           padding: 12px 0;
+          padding-right: 42px;
           border-bottom: 1px solid var(--line);
         }
       }
@@ -386,6 +428,11 @@
         </label>
 
         <section class="form-section">
+          <h2>Grups a avaluar</h2>
+          <div id="evaluation-groups" class="group-checks"></div>
+        </section>
+
+        <section class="form-section">
           <h2>Avaluació de les matèries</h2>
           <p class="subtitle">Introdueix els valors que podran triar els professors per avaluar cada matèria.</p>
           <div id="subject-values" class="dynamic-list"></div>
@@ -417,6 +464,7 @@
         }
       };
       let evaluationProgressTimer = null;
+      let deletedRowIds = new Set();
 
       document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('group-selector').addEventListener('change', renderSelectedGroup);
@@ -494,6 +542,14 @@
         const subjectSelect = createSelect('subject', state.options.subjects, row.subjectFullName);
         const teacherSelect = createSelect('teacher', state.options.teachers, row.teacherFullName);
         const dinantiaGroupSelect = createSelect('dinantia-group', state.options.dinantiaGroups, row.subjectDinantiaGroupAv);
+        const deleteButton = createDeleteButton('Eliminar fila', () => {
+          if (item.dataset.id) {
+            deletedRowIds.add(item.dataset.id);
+          }
+
+          item.remove();
+        });
+        deleteButton.classList.add('cache-row-delete');
 
         [subjectSelect, teacherSelect, dinantiaGroupSelect].forEach(select => {
           select.addEventListener('change', () => {
@@ -501,7 +557,7 @@
           });
         });
 
-        item.append(subjectSelect, teacherSelect, dinantiaGroupSelect);
+        item.append(subjectSelect, teacherSelect, dinantiaGroupSelect, deleteButton);
 
         return item;
       }
@@ -556,7 +612,7 @@
           subjectDinantiaGroupAv: row.querySelector('select[data-role="dinantia-group"]').value
         }));
 
-        if (!rows.length) {
+        if (!rows.length && !deletedRowIds.size) {
           setStatus('No hi ha canvis per desar.');
           return;
         }
@@ -570,6 +626,7 @@
             renderGroupSelector();
             document.getElementById('group-selector').value = groupName;
             renderSelectedGroup();
+            deletedRowIds = new Set();
             setBusy(false);
             setStatus('Canvis desats.', 'success');
           })
@@ -579,7 +636,8 @@
           })
           .saveSubjectsCacheEdits({
             groupName,
-            rows
+            rows,
+            deletedRowIds: Array.from(deletedRowIds)
           });
       }
 
@@ -613,6 +671,7 @@
         document.getElementById('evaluation-name').value = '';
         document.getElementById('subject-values').innerHTML = '';
         document.getElementById('concepts').innerHTML = '';
+        renderEvaluationGroups();
 
         [
           'No assolit',
@@ -623,6 +682,27 @@
 
         addConceptInput('', ['']);
         document.getElementById('evaluation-modal').classList.add('open');
+      }
+
+      function renderEvaluationGroups() {
+        const container = document.getElementById('evaluation-groups');
+        container.innerHTML = '';
+
+        state.groups.forEach(group => {
+          const label = document.createElement('label');
+          label.className = 'check-label';
+
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.value = group;
+          checkbox.checked = true;
+
+          const text = document.createElement('span');
+          text.textContent = group;
+
+          label.append(checkbox, text);
+          container.appendChild(label);
+        });
       }
 
       function closeEvaluationModal() {
@@ -701,6 +781,9 @@
         stopEvaluationProgressPolling();
 
         const evaluationName = document.getElementById('evaluation-name').value.trim();
+        const selectedGroups = Array.from(document.querySelectorAll('#evaluation-groups input[type="checkbox"]:checked'))
+          .map(input => input.value)
+          .filter(Boolean);
         const subjectValues = Array.from(document.querySelectorAll('#subject-values input'))
           .map(input => input.value.trim())
           .filter(Boolean);
@@ -715,6 +798,11 @@
 
         if (!evaluationName) {
           setStatus("Falta el nom de l'avaluació.", 'error');
+          return;
+        }
+
+        if (!selectedGroups.length) {
+          setStatus('Cal seleccionar com a mínim un grup a avaluar.', 'error');
           return;
         }
 
@@ -738,6 +826,7 @@
           .createEvaluation({
             runId,
             evaluationName,
+            selectedGroups,
             subjectValues,
             concepts
           });

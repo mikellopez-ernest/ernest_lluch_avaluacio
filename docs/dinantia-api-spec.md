@@ -282,7 +282,7 @@ The current local cache `Grades` -> `subjects_cache` provides:
 | `group_name` | Dinantia group display name from local mapping table. |
 | `prof_reduit` | Local teacher code from `GPU001`. |
 | `teacher_full_name` | Local teacher display name. |
-| `teacher_email` | Local teacher email from `Dades de professors` -> `Llista.CORREU`. |
+| `teacher_email` | Local teacher email from `Dades de professors` -> `Llista.CORREU INSTIT`. |
 | `mat_reduit` | Local subject code from `GPU001`. |
 | `subject_full_name` | Local subject display name. |
 | `subject_dinantia_group_av` | Dinantia group ID selected for assessment. |

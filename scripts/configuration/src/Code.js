@@ -99,6 +99,9 @@ function saveSubjectsCacheEdits(payload) {
 
   const groupName = String(payload && payload.groupName || '').trim();
   const rows = Array.isArray(payload && payload.rows) ? payload.rows : [];
+  const deletedRowIds = new Set((Array.isArray(payload && payload.deletedRowIds) ? payload.deletedRowIds : [])
+    .map(id => String(id || '').trim())
+    .filter(Boolean));
 
   if (!groupName) {
     throw new Error('Falta el grup.');
@@ -111,7 +114,9 @@ function saveSubjectsCacheEdits(payload) {
     const existingRows = readSubjectsCacheRows_();
     const sourceGroup = existingRows.find(row => row.groupName === groupName);
     const groupCode = sourceGroup ? sourceGroup.group : '';
-    const rowsById = new Map(existingRows.map(row => [String(row.id), row]));
+    const rowsById = new Map(existingRows
+      .filter(row => !deletedRowIds.has(String(row.id)))
+      .map(row => [String(row.id), row]));
     const newRows = [];
 
     rows.forEach(row => {
@@ -159,16 +164,18 @@ function createEvaluation(payload) {
 
   const runId = String(payload && payload.runId || Utilities.getUuid()).trim();
   const evaluationName = String(payload && payload.evaluationName || '').trim();
+  const selectedGroups = sanitizeOrderedList_(payload && payload.selectedGroups);
   const subjectValues = sanitizeOrderedList_(payload && payload.subjectValues);
   const concepts = sanitizeConcepts_(payload && payload.concepts);
   const logPrefix = `createEvaluation:${runId}`;
   const lock = LockService.getScriptLock();
   let lockAcquired = false;
 
-  Logger.log('%s start name="%s" subjectValues=%s concepts=%s', logPrefix, evaluationName, subjectValues.length, concepts.length);
+  Logger.log('%s start name="%s" selectedGroups=%s subjectValues=%s concepts=%s', logPrefix, evaluationName, selectedGroups.length, subjectValues.length, concepts.length);
   updateEvaluationProgress_(runId, 'running', "S'ha iniciat la creació de l'avaluació.", {
     stage: 'start',
     evaluationName,
+    selectedGroups: selectedGroups.length,
     subjectValues: subjectValues.length,
     concepts: concepts.length
   });
@@ -182,6 +189,11 @@ function createEvaluation(payload) {
     if (!subjectValues.length) {
       Logger.log('%s failed missing subject values', logPrefix);
       throw new Error('Cal afegir com a mínim un valor per avaluar les matèries.');
+    }
+
+    if (!selectedGroups.length) {
+      Logger.log('%s failed missing selected groups', logPrefix);
+      throw new Error('Cal seleccionar com a mínim un grup a avaluar.');
     }
 
     Logger.log('%s waiting for lock', logPrefix);
@@ -224,7 +236,7 @@ function createEvaluation(payload) {
     writeEvaluationConfig_(configSheet, subjectValues, concepts);
     Logger.log('%s populating main sheet', logPrefix);
     updateEvaluationProgress_(runId, 'running', 'Llegint alumnes de Dinantia i generant files...', { stage: 'populating_main' });
-    const rowsWritten = populateEvaluationSheet_(mainSheet, subjectValues, concepts, logPrefix, runId);
+    const rowsWritten = populateEvaluationSheet_(mainSheet, subjectValues, concepts, logPrefix, runId, selectedGroups);
     Logger.log('%s completed rowsWritten=%s', logPrefix, rowsWritten);
     updateEvaluationProgress_(runId, 'complete', `Avaluació creada: ${sheetName} (${rowsWritten} files).`, {
       stage: 'complete',
@@ -437,13 +449,37 @@ function evaluationProgressKey_(runId) {
 
 function registerEvaluation_(gradesSpreadsheet, evaluationName, sheetName) {
   const sheet = getRequiredSheet_(gradesSpreadsheet, 'avaluacions');
+  ensureEvaluationRegistryHeaders_(sheet);
   const rows = readRowsByHeader_(sheet);
   const nextId = rows.reduce((max, row) => {
     const id = Number(getField_(row, 'id'));
     return Number.isFinite(id) && id > max ? id : max;
   }, 0) + 1;
 
-  sheet.appendRow([nextId, evaluationName, sheetName]);
+  const nextRow = sheet.getLastRow() + 1;
+  sheet.getRange(nextRow, 1, 1, 4).setValues([[nextId, evaluationName, sheetName, 'Creada']]);
+  applyEvaluationStatusValidation_(sheet, nextRow);
+}
+
+function ensureEvaluationRegistryHeaders_(sheet) {
+  const headers = ['id', 'nom_av', 'sheet_name', 'Estat'];
+  const currentHeaders = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), headers.length)).getValues()[0]
+    .map(value => String(value || '').trim());
+
+  headers.forEach((header, index) => {
+    if (currentHeaders[index] !== header) {
+      sheet.getRange(1, index + 1).setValue(header);
+    }
+  });
+}
+
+function applyEvaluationStatusValidation_(sheet, rowNumber) {
+  const rule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(['Creada', 'Avaluació professors', 'Mode junta', 'Tancada'], true)
+    .setAllowInvalid(false)
+    .build();
+
+  sheet.getRange(rowNumber, 4).setDataValidation(rule);
 }
 
 function writeEvaluationConfig_(sheet, subjectValues, concepts) {
@@ -471,8 +507,10 @@ function writeEvaluationConfig_(sheet, subjectValues, concepts) {
   formatEvaluationConfigSheet_(sheet, headers.length);
 }
 
-function populateEvaluationSheet_(sheet, subjectValues, concepts, logPrefix, runId) {
-  const cacheRows = readSubjectsCacheRows_();
+function populateEvaluationSheet_(sheet, subjectValues, concepts, logPrefix, runId, selectedGroups) {
+  const selectedGroupSet = new Set((selectedGroups || []).map(group => normalizeCode_(group)));
+  const cacheRows = readSubjectsCacheRows_()
+    .filter(row => selectedGroupSet.has(normalizeCode_(row.groupName)));
   const groupAliasMap = buildDinantiaGroupAliasMap_();
   const groupIds = uniqueSorted_(cacheRows.map(row => resolveDinantiaGroupId_(row.subjectDinantiaGroupAv, groupAliasMap)));
   Logger.log('%s populate cacheRows=%s uniqueDinantiaGroups=%s sampleGroups=%s', logPrefix, cacheRows.length, groupIds.length, groupIds.slice(0, 10).join(','));
@@ -488,6 +526,7 @@ function populateEvaluationSheet_(sheet, subjectValues, concepts, logPrefix, run
     'teacher_email',
     'subject_full_name',
     'student_full_name',
+    'PI',
     'Avaluació de la matèria'
   ].concat(concepts.map(concept => concept.name), ['student_account_id']);
   const values = [headers];
@@ -503,6 +542,7 @@ function populateEvaluationSheet_(sheet, subjectValues, concepts, logPrefix, run
         cacheRow.teacherEmail,
         cacheRow.subjectFullName,
         student.name,
+        false,
         '',
         ...concepts.map(() => ''),
         student.id
@@ -554,17 +594,22 @@ function formatEvaluationMainSheet_(sheet, columnCount, rowCount) {
   sheet.setColumnWidth(3, 220);
   sheet.setColumnWidth(4, 220);
   sheet.setColumnWidth(5, 220);
-  sheet.setColumnWidth(6, 190);
+  sheet.setColumnWidth(6, 80);
+  sheet.setColumnWidth(7, 190);
   sheet.hideColumns(columnCount);
 }
 
 function applyEvaluationValidations_(sheet, dataRowCount, subjectValues, concepts) {
+  const checkboxRule = SpreadsheetApp.newDataValidation()
+    .requireCheckbox()
+    .build();
   const subjectRule = SpreadsheetApp.newDataValidation()
     .requireValueInList(subjectValues, true)
     .setAllowInvalid(false)
     .build();
 
-  sheet.getRange(2, 6, dataRowCount, 1).setDataValidation(subjectRule);
+  sheet.getRange(2, 6, dataRowCount, 1).setDataValidation(checkboxRule);
+  sheet.getRange(2, 7, dataRowCount, 1).setDataValidation(subjectRule);
 
   concepts.forEach((concept, index) => {
     if (!concept.options.length) return;
@@ -574,7 +619,7 @@ function applyEvaluationValidations_(sheet, dataRowCount, subjectValues, concept
       .setAllowInvalid(false)
       .build();
 
-    sheet.getRange(2, 7 + index, dataRowCount, 1).setDataValidation(rule);
+    sheet.getRange(2, 8 + index, dataRowCount, 1).setDataValidation(rule);
   });
 }
 
@@ -1024,6 +1069,7 @@ function buildTeacherInfoByCode_(rows) {
 function getTeacherEmail_(teacherRow) {
   const preferredEmail = String(getField_(
     teacherRow,
+    'CORREU INSTIT',
     'CORREU',
     'EMAIL',
     'E-MAIL',

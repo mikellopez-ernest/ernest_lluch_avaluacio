@@ -25,6 +25,7 @@ When a group is selected, the page shows editable dropdown rows for:
 - `Grup d'alumnes per avaluar`
 
 Manual edits are saved directly to `Grades` -> `subjects_cache`.
+Rows can also be deleted from the editor and are removed from `subjects_cache` on save.
 
 The page includes a floating refresh button that warns users before rebuilding `Grades` -> `subjects_cache` from `Horaris` -> `GPU001`.
 
@@ -35,11 +36,15 @@ The page also includes a floating `Crear avaluació` button. It creates:
 - a row in `Grades` -> `avaluacions`
 - main-sheet rows by expanding `subjects_cache` through Dinantia students
 
+The create-evaluation modal lets users choose which groups to include.
+
 Evaluation expansion reads Dinantia accounts once, filters `Student` accounts, and indexes them by `account.groups.member`. Those membership values are string group IDs such as `1r ESO A`.
 
 During evaluation creation, the page polls progress by run ID and shows the latest stage in the status area.
 
-Generated evaluation sheets copy the teacher email next to the teacher name and include a hidden `student_account_id` column for future sync work.
+Generated evaluation sheets copy the teacher email next to the teacher name, always include a `PI` checkbox column defaulting to false, and include a hidden `student_account_id` column for future sync work.
+
+`Grades` -> `avaluacions` stores `Estat = Creada` for new evaluations and validates the status cell against the configured workflow states.
 
 The public cache rebuild function is:
 

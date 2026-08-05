@@ -75,7 +75,8 @@ Row 1 contains headers. Data starts in row 2.
 | I | `DNI` | ID document value. |
 | J | `TELF` | Phone number. |
 | K | `XTEC` | XTEC email. |
-| L | `CORREU` | Institutional/main email. Preferred source for `subjects_cache.teacher_email`. |
+| L | `CORREU` | Email field. Fallback source for `subjects_cache.teacher_email`. |
+| varies | `CORREU INSTIT` | Main institutional email field. Preferred source for `subjects_cache.teacher_email`. |
 | M | `NOUS` | New teacher boolean flag. |
 | N | `ACTIU` | Active teacher boolean flag. |
 | O | `BAIXA?` | Leave-of-absence boolean flag. |
@@ -317,6 +318,7 @@ Row 1 contains headers. Data starts in row 2.
 | A | `id` | Autonumeric value that identifies each register. |
 | B | `nom_av` | Name of the evaluation period, for example `1a avaluació`. |
 | C | `sheet_name` | Name of the sheet, inside the `Grades` spreadsheet, where that evaluation period's data is stored. |
+| D | `Estat` | Evaluation workflow status. |
 
 #### avaluacions Rules
 
@@ -325,6 +327,17 @@ Row 1 contains headers. Data starts in row 2.
 `nom_av` is the human-readable evaluation period name shown to users.
 
 `sheet_name` stores a sheet name, not a spreadsheet ID. The target sheet must exist inside the `Grades` spreadsheet.
+
+`Estat` must use a validation list with these allowed values:
+
+```text
+Creada
+Avaluació professors
+Mode junta
+Tancada
+```
+
+When a new evaluation is created, `Estat` must be set to `Creada`.
 
 If an existing header is named `sheet_id`, treat it as a naming error for this workflow and migrate it to `sheet_name` before implementation.
 
@@ -343,7 +356,7 @@ The cache-building function must be public so it can be run directly.
 | C | `group_name` | Resolved Dinantia group name. |
 | D | `prof_reduit` | Value from `Horaris` -> `GPU001` column C. |
 | E | `teacher_full_name` | Resolved teacher full name from `Llista`: `NOM COGNOM1 COGNOM2`. |
-| F | `teacher_email` | Resolved teacher email from `Llista.CORREU`. |
+| F | `teacher_email` | Resolved teacher email from `Llista.CORREU INSTIT`. |
 | G | `mat_reduit` | Value from `Horaris` -> `GPU001` column D. |
 | H | `subject_full_name` | Resolved subject display name from `assignatures.full_name`. |
 | I | `subject_dinantia_group_av` | Dinantia group ID selected for assessment. Defaults to `group_name` when rebuilt from `GPU001`. |
@@ -400,11 +413,11 @@ where Horaris.GPU001 column C = Dades de professors.Llista.REDUIT / REDUÏT
 `teacher_email`:
 
 ```text
-subjects_cache.teacher_email = Dades de professors.Llista.CORREU
+subjects_cache.teacher_email = Dades de professors.Llista.CORREU INSTIT
 where Horaris.GPU001 column C = Dades de professors.Llista.REDUIT / REDUÏT
 ```
 
-If `CORREU` is blank or unavailable, the implementation may fall back to other email-like teacher fields, especially `XTEC`, and finally the first value in the teacher row that looks like an email address.
+If `CORREU INSTIT` is blank or unavailable, the implementation may fall back to other email-like teacher fields, including `CORREU` and `XTEC`, and finally the first value in the teacher row that looks like an email address.
 
 `mat_reduit`:
 
@@ -467,6 +480,7 @@ The endpoint must show:
    - `+` to add a line.
    - 3.5-inch disk icon to save.
 6. A second floating bottom-right button, left of the refresh button, with a document/check icon and accessible name `Crear avaluació`.
+7. A red delete icon on each editable cache row, shown on hover/focus.
 
 Editable row fields:
 
@@ -502,6 +516,8 @@ Saving should send only edited rows and new rows to the server.
 The server should update only the submitted existing row IDs and append submitted new rows while preserving all other rows.
 
 New rows added with `+` are written to `subjects_cache` and assigned new `id` values during save.
+
+Rows deleted with the red delete icon are removed from `subjects_cache` on save.
 
 While save is running, the page must be disabled so the user cannot change selectors, add rows, save again, or rebuild the cache.
 
@@ -541,6 +557,8 @@ Modal content:
 | `H1` | `Crear una avaluació` |
 | Text input label | `Nom de l'avaluació` |
 | Text input placeholder | `p.e. 1a avaluació` |
+| `H2` | `Grups a avaluar` |
+| Group checkbox list | One checkbox per available `subjects_cache.group_name`; checked groups are included in the generated sheet. |
 | `H2` | `Avaluació de les matèries` |
 | Subtitle | `Introdueix els valors que podran triar els professors per avaluar cada matèria.` |
 | Dynamic inputs | One text input per subject-evaluation value, with `+` to add more. |
@@ -574,11 +592,12 @@ While evaluation creation is running, the frontend must poll `getEvaluationCreat
 When the user confirms the create-evaluation modal:
 
 1. Normalize `Nom de l'avaluació` to snake_case without accents.
-2. Create a blank main evaluation sheet in the `Grades` spreadsheet using the normalized name.
-3. Create a config sheet named `{evaluation_sheet_name}_config`.
-4. Register the new evaluation in `Grades` -> `avaluacions`.
-5. Fill the config sheet.
-6. Fill the main evaluation sheet from `Grades` -> `subjects_cache` expanded by Dinantia students.
+2. Read selected groups from `Grups a avaluar`.
+3. Create a blank main evaluation sheet in the `Grades` spreadsheet using the normalized name.
+4. Create a config sheet named `{evaluation_sheet_name}_config`.
+5. Register the new evaluation in `Grades` -> `avaluacions` with `Estat = Creada`.
+6. Fill the config sheet.
+7. Fill the main evaluation sheet from `Grades` -> `subjects_cache` expanded by Dinantia students, using only selected groups.
 
 If either target sheet already exists, the script must fail with a clear error and avoid overwriting existing data.
 
@@ -606,6 +625,7 @@ Append one row to `Grades` -> `avaluacions`:
 | `id` | Next autonumeric value. |
 | `nom_av` | Original evaluation name entered by the user. |
 | `sheet_name` | Normalized main evaluation sheet name. |
+| `Estat` | `Creada`, with validation applied to the cell. |
 
 #### Config Sheet Layout
 
@@ -627,12 +647,13 @@ The main evaluation sheet is generated from `Grades` -> `subjects_cache`.
 
 For each `subjects_cache` row:
 
-1. Read `subject_dinantia_group_av`.
-2. Resolve it against Dinantia groups by `id`, `name`, or `tag`.
-3. Prefer storing and using the resolved Dinantia group ID.
-4. Use an in-memory student index built from Dinantia accounts.
-5. Match the resolved Dinantia group ID against each student account's `groups.member` values.
-6. Create one main-sheet row per matched student.
+1. Skip the row if `subjects_cache.group_name` is not one of the selected groups.
+2. Read `subject_dinantia_group_av`.
+3. Resolve it against Dinantia groups by `id`, `name`, or `tag`.
+4. Prefer storing and using the resolved Dinantia group ID.
+5. Use an in-memory student index built from Dinantia accounts.
+6. Match the resolved Dinantia group ID against each student account's `groups.member` values.
+7. Create one main-sheet row per matched student.
 
 Main sheet columns:
 
@@ -643,8 +664,9 @@ Main sheet columns:
 | C | `teacher_email` | `subjects_cache.teacher_email`. |
 | D | `subject_full_name` | `subjects_cache.subject_full_name`. |
 | E | `student_full_name` | Full student name from Dinantia. |
-| F | `Avaluació de la matèria` | User-editable dropdown using config column B values. |
-| G onward | Extra concept name | One column per extra concept from the config sheet. Dropdown validation when the concept has options; open text when it has none. |
+| F | `PI` | Boolean checkbox column. Always created. Default value `false`. |
+| G | `Avaluació de la matèria` | User-editable dropdown using config column B values. |
+| H onward | Extra concept name | One column per extra concept from the config sheet. Dropdown validation when the concept has options; open text when it has none. |
 | Last hidden column | `student_account_id` | Dinantia student account ID. Hidden from normal users and reserved for future sync workflows. |
 
 The main sheet must be written in bulk, not row by row.
@@ -656,7 +678,8 @@ The main evaluation sheet must be formatted after writing:
 3. Apply a light header background.
 4. Wrap cell text.
 5. Auto-resize columns.
-6. Hide `student_account_id`.
+6. Apply checkbox validation to `PI`.
+7. Hide `student_account_id`.
 
 The config sheet must also freeze and format its header row.
 
