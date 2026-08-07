@@ -8,3 +8,4 @@ Add setup notes, API references, deployment procedures, and operational runbooks
 
 - [Shared Spreadsheet Database Specification](database-spec.md)
 - [Dinantia API Specification](dinantia-api-spec.md)
+- [Teacher Panel Endpoint Specification](teacher-pannel-spec.md)

@@ -1,0 +1,209 @@
+# Teacher Panel Endpoint Specification
+
+This document defines the teacher-facing endpoint that consumes evaluation sheets created by the `configuration` script.
+
+The Apps Script project folder is `scripts/teacher_pannel`.
+
+## Purpose
+
+The teacher panel lets teachers fill in generated evaluation tables without using the configuration endpoint.
+
+The endpoint must not interact with `Grades` -> `subjects_cache`. That cache is only an input used earlier by the configuration script when creating a generated evaluation sheet.
+
+For teacher workflows, the main database is always the generated evaluation sheet:
+
+```text
+Grades -> {sheet_name}
+```
+
+The endpoint must always read `Grades` -> `avaluacions` first to know which generated sheet can be used.
+
+## Apps Script
+
+| Field | Value |
+| --- | --- |
+| Folder | `scripts/teacher_pannel` |
+| Script ID | `1CLBSkbrZagzWSX8VxBot_sPZaQVBnexGdocsCm-_xeMTRqoIgI_hpoby` |
+| Page title | `Avaluació` |
+
+## Deployment
+
+Deploy as a web app.
+
+| Setting | Value |
+| --- | --- |
+| Execute as | Owner / `admindomini@iernestlluch.cat` |
+| Who has access | Users in `iernestlluch.cat` |
+
+The script also checks the active user's email domain and rejects users outside `@iernestlluch.cat`.
+
+## Data Sources
+
+Logical table name in registry:
+
+```text
+Grades
+```
+
+Required sheets:
+
+| Sheet | Purpose |
+| --- | --- |
+| `avaluacions` | Lists available evaluation periods and their generated sheet names. |
+| `{sheet_name}` | Main evaluation sheet and only writable teacher-panel database. |
+| `{sheet_name}_config` | Reference sheet for dropdown values and custom concept options. |
+
+## Evaluation Registry
+
+The endpoint reads `Grades` -> `avaluacions`.
+
+Expected columns:
+
+| Header | Meaning |
+| --- | --- |
+| `id` | Stable evaluation register id. |
+| `nom_av` | Human-readable evaluation name. |
+| `sheet_name` | Generated main evaluation sheet name inside the `Grades` spreadsheet. |
+| `Estat` | Workflow status. |
+
+If an old header named `sheet_id` exists, readers may treat it as `sheet_name` for compatibility.
+
+Only evaluations where `Estat` is exactly:
+
+```text
+Avaluació professors
+```
+
+are available in the teacher panel.
+
+If no evaluation is in that state, the endpoint shows a clear error. If one evaluation is available, it is loaded directly. If more than one is available, the endpoint shows an evaluation selector.
+
+Before saving, the endpoint re-checks `avaluacions` and rejects the save if the selected evaluation is no longer in `Avaluació professors`.
+
+## Main Evaluation Sheet
+
+Generated evaluation sheets contain:
+
+| Header | Purpose |
+| --- | --- |
+| `group_name` | Display group. |
+| `teacher_full_name` | Teacher name. |
+| `teacher_email` | Teacher email. |
+| `subject_full_name` | Subject name. |
+| `student_full_name` | Student name. |
+| `PI` | Editable checkbox column. |
+| `Avaluació de la matèria` | Editable subject evaluation dropdown. |
+| custom concept columns | Editable configured concepts. |
+| `student_account_id` | Hidden Dinantia student account id reserved for future sync workflows. |
+
+The endpoint identifies writable rows by their original spreadsheet row number, `sheetRow`. It must never use student name, group, subject, or visible row order as the write identity.
+
+Teacher-specific views match the active user's email against `teacher_email`. Email matching is trimmed and case-insensitive.
+
+If the active teacher email does not appear in the selected evaluation sheet, show:
+
+```text
+No tens alumnes assignats en aquesta avaluació.
+```
+
+## Config Sheet
+
+The endpoint reads `{sheet_name}_config` for dropdown values.
+
+| Column | Purpose |
+| --- | --- |
+| B | Values for `Avaluació de la matèria`. |
+| C onward | Concept names and optional dropdown values. |
+
+For custom concept columns:
+
+- Show all remaining main-sheet headers after column G exactly as they appear.
+- Exclude `student_account_id`.
+- If the matching config column has values, render a dropdown.
+- If the matching config column has no values, render an open text field.
+
+## UI Flow
+
+The page title is:
+
+```text
+Avaluació
+```
+
+After the evaluation is selected or auto-loaded, show:
+
+| Control | Source |
+| --- | --- |
+| `Grup` | Unique `group_name` values in rows matching the active teacher email. |
+| `Matèria` | Unique `subject_full_name` values for the selected group and active teacher email. |
+
+The table is shown only after both `Grup` and `Matèria` are selected.
+
+The table title is:
+
+```text
+{group_name} - {subject_full_name}
+```
+
+Rows are sorted alphabetically by `student_full_name`.
+
+Table columns:
+
+| UI column | Sheet column |
+| --- | --- |
+| `Alumne` | `student_full_name` |
+| `PI` | `PI` |
+| `Avaluació de la matèria` | `Avaluació de la matèria` |
+| remaining concept headers | matching concept columns |
+
+Any edited row is highlighted yellow.
+
+## Save Flow
+
+The endpoint has a floating save button with a 3.5-inch disk icon.
+
+When saving:
+
+1. Disable the page.
+2. Change the page state visually and show a centered loading indicator.
+3. Send only dirty rows to the backend.
+4. Re-check the selected evaluation status in `avaluacions`.
+5. Confirm each edited `sheetRow` still belongs to the active teacher email.
+6. Write the values to the selected `Grades` -> `{sheet_name}` sheet.
+7. Reload data from the spreadsheet.
+8. Re-render the selected group and subject when still available.
+9. Clear yellow highlighting only after the reload succeeds.
+
+Writable fields:
+
+| Field | Rule |
+| --- | --- |
+| `PI` | Boolean checkbox. |
+| `Avaluació de la matèria` | String selected from config values. |
+| custom concept columns | String from dropdown or open text input. |
+
+Non-writable fields such as group, teacher, subject, student name, and `student_account_id` must not be changed by this endpoint.
+
+## Public Functions
+
+| Function | Purpose |
+| --- | --- |
+| `doGet` | Web app entrypoint. |
+| `grantPermissionsManually` | Manual authorization helper for the owner. |
+| `getTeacherPanelData` | Loads available active evaluations. |
+| `getTeacherEvaluationData` | Loads rows for the active teacher in a selected evaluation. |
+| `saveTeacherEvaluationRows` | Saves dirty teacher-editable values back to the generated evaluation sheet. |
+
+All other functions must be private helpers with a trailing underscore.
+
+## Implementation Requirements
+
+- Use the shared database registry pattern documented in `database-spec.md`.
+- Do not read from or write to `subjects_cache`.
+- Do not call Dinantia for teacher-panel reads or saves.
+- Use the generated evaluation sheet as the main writable database.
+- Preserve generated sheet headers.
+- Keep `student_account_id` hidden from the UI and non-writable.
+- Keep public functions limited to endpoint entrypoints and frontend handlers.
+- Keep helper functions private with a trailing underscore.
+- Do not write Dinantia credentials or other secrets to source, docs, logs, or UI.

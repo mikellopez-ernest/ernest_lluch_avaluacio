@@ -290,6 +290,13 @@ Relationship:
 Horaris.GPU001.class_code = any comma-separated alias in Dinantia.dinantia_2_dades_alumnes.untis_group_name
 ```
 
+Mapping integrity is important. Each normalized `untis_group_name` alias should
+belong to only one `dinantia_group_name`. If the same alias appears in more than
+one row, the current implementation keeps the first mapping it reads and ignores
+later duplicates. If a cache row resolves to an unexpected group name, first
+check this mapping table for wrong aliases, duplicate aliases, or aliases stored
+under the wrong Dinantia group.
+
 ### subjects_cache Post-Processing Rules
 
 After all substitutions are resolved:
@@ -352,8 +359,8 @@ The cache-building function must be public so it can be run directly.
 | Column | Header | Meaning |
 | --- | --- | --- |
 | A | `id` | Autonumeric value for each cache row. |
-| B | `group` | Value from `Horaris` -> `GPU001` column B. |
-| C | `group_name` | Resolved Dinantia group name. |
+| B | `group` | One or more values from `Horaris` -> `GPU001` column B. Multi-group events are comma-joined. |
+| C | `group_name` | One or more resolved Dinantia group names. Multi-group events are comma-joined. |
 | D | `prof_reduit` | Value from `Horaris` -> `GPU001` column C. |
 | E | `teacher_full_name` | Resolved teacher full name from `Llista`: `NOM COGNOM1 COGNOM2`. |
 | F | `teacher_email` | Resolved teacher email from `Llista.CORREU INSTIT`. |
@@ -363,24 +370,52 @@ The cache-building function must be public so it can be run directly.
 
 Important: Dinantia group IDs are strings and can look like human-readable group names, for example `1r ESO A`. Do not assume numeric IDs.
 
+Important: `subjects_cache.group` is a comma-separated array when a single
+timetable event affects multiple groups. Consumers must split by comma and match
+exact normalized group codes, not use substring matching.
+
 ### subjects_cache Build Flow
 
 1. Read all rows from `Horaris` -> `GPU001` into an in-memory array.
-2. Group rows by `group + subject`.
-3. For each `group + subject`, count how many scheduled rows/hours each teacher has.
-4. Keep only the teacher or teachers with the highest hour count for that `group + subject`.
-5. If multiple teachers are tied for the highest hour count, keep all tied teachers.
-6. Delete rows for teachers with fewer hours in that `group + subject`.
-7. Deduplicate the remaining in-memory array before writing the cache.
-8. Two remaining `GPU001` rows are duplicates when columns B, C, and D all match at the same time:
-   - B: group/class code
-   - C: teacher code
-   - D: subject code
-9. After deduplication, resolve group, teacher, teacher email, and subject display values.
-10. Delete rows without a resolved `group_name`.
-11. Sort rows by `group_name`.
-12. Clear/rewrite `Grades` -> `subjects_cache` entirely.
-13. Write headers and all derived rows.
+2. First pass: group rows by `group + subject`, using `GPU001` column B and column D.
+3. Inside each `group + subject`, count how many scheduled rows/hours each teacher has.
+4. Keep only the teacher or teachers with the highest row count for that `group + subject`.
+5. If multiple teachers are tied for the highest row count, keep all tied teachers.
+6. Delete rows for teachers with fewer rows in that `group + subject`.
+7. Still in the first pass, collapse repeated rows where `group + teacher + subject` all match, leaving one row per combination.
+8. Second pass: group the cleaned rows by `GPU001` column A, the event code.
+9. Inside each event-code group, if the same teacher and subject appear in multiple groups, collect those distinct group codes.
+10. Write one cache source row per kept `event code + teacher + subject`.
+11. In that source row, join collected group codes with commas in `subjects_cache.group`.
+12. Resolve each joined group code independently into a Dinantia group name.
+13. Join resolved Dinantia group names with comma-space in `subjects_cache.group_name`.
+14. Resolve teacher, teacher email, and subject display values.
+15. Delete rows without a resolved `group_name`.
+16. Sort rows by `group_name`.
+17. Clear/rewrite `Grades` -> `subjects_cache` entirely.
+18. Write headers and all derived rows.
+
+The first pass uses row counts as the number of scheduled hours for each
+teacher inside a `group + subject` combination. A teacher with fewer rows/hours
+is discarded for that combination; tied teachers are retained.
+
+Example:
+
+```text
+471  2A  LOPINF  DIG  2E  2  6
+471  2B  LOPINF  DIG  2E  2  6
+471  2C  LOPINF  DIG  2E  2  6
+471  2D  LOPINF  DIG  2E  2  6
+471  2E  LOPINF  DIG  2E  2  6
+```
+
+These rows share the same event code, teacher, and subject, and differ only by group. They produce one cache row:
+
+```text
+group = 2A,2B,2C,2D,2E
+prof_reduit = LOPINF
+mat_reduit = DIG
+```
 
 ### subjects_cache Field Resolution
 
@@ -390,12 +425,22 @@ Important: Dinantia group IDs are strings and can look like human-readable group
 subjects_cache.group = Horaris.GPU001 column B
 ```
 
+For multi-group event rows:
+
+```text
+subjects_cache.group = comma-joined Horaris.GPU001 column B values for the event
+```
+
 `group_name`:
 
 ```text
 subjects_cache.group_name = Dinantia.dinantia_2_dades_alumnes.dinantia_group_name
 where Horaris.GPU001 column B = Dinantia.dinantia_2_dades_alumnes.untis_group_name
 ```
+
+For multi-group event rows, resolve each comma-separated `subjects_cache.group` code separately and join the resolved names with comma-space.
+
+`subjects_cache.group` must be treated as a comma-separated array of group codes by consumers. For example, if `subjects_cache.group = 1F,2F`, the same cache row belongs to both `1F` and `2F`.
 
 `prof_reduit`:
 
@@ -442,6 +487,11 @@ When `subjects_cache` is rebuilt from `GPU001`, this field may initially be fill
 
 For compatibility, any process that consumes `subject_dinantia_group_av` must resolve the value against Dinantia group `id`, `name`, and `tag`. The resolved group ID is the value used to match students.
 
+When a cache row contains multiple local groups, `group_name` and the fallback
+`subject_dinantia_group_av` may contain multiple comma-separated display names.
+Before creating evaluations, the configuration UI should be used to choose the
+specific Dinantia group ID to assess whenever the fallback is ambiguous.
+
 If group, teacher, or subject references cannot be resolved, the cache builder should preserve the source code and leave the unresolved display value blank or fall back to the source code when a user-facing value is required.
 
 ## Configuration Endpoint
@@ -472,15 +522,16 @@ All other functions must be private helpers with a trailing `_`.
 
 The endpoint must show:
 
-1. A group dropdown selector, empty by default.
-2. When a group is selected, editable rows from `Grades` -> `subjects_cache` for that group.
-3. One floating refresh bubble button with a refresh icon in the bottom-right corner.
-4. A warning modal before cache rebuild.
-5. Two buttons under the editable list:
+1. A group-code dropdown selector, empty by default.
+2. The dropdown values come from individual values inside `subjects_cache.group`, splitting comma-separated multi-group rows.
+3. When a group code is selected, show every editable row whose `subjects_cache.group` contains that selected group code.
+4. One floating refresh bubble button with a refresh icon in the bottom-right corner.
+5. A warning modal before cache rebuild.
+6. Two buttons under the editable list:
    - `+` to add a line.
    - 3.5-inch disk icon to save.
-6. A second floating bottom-right button, left of the refresh button, with a document/check icon and accessible name `Crear avaluació`.
-7. A red delete icon on each editable cache row, shown on hover/focus.
+7. A second floating bottom-right button, left of the refresh button, with a document/check icon and accessible name `Crear avaluació`.
+8. A red delete icon on each editable cache row, shown on hover/focus.
 
 Editable row fields:
 
@@ -498,7 +549,7 @@ Dropdown option lists are calculated once when loading the page.
 
 | Dropdown | Source | Sort |
 | --- | --- | --- |
-| Group selector | Unique `subjects_cache.group_name` values. | Alphabetical. |
+| Group selector | Unique individual group codes from `subjects_cache.group`, splitting comma-separated values. | Alphabetical. |
 | `Assignatura` | Unique `subjects_cache.subject_full_name` values. | Alphabetical. |
 | `Professor` | Unique `subjects_cache.teacher_full_name` values. | Alphabetical. |
 | `Grup d'alumnes per avaluar` | Dinantia API group IDs from `GET /v1/groups/index`. | Alphabetical. |
@@ -514,6 +565,12 @@ The page must track which rows have been edited.
 Saving should send only edited rows and new rows to the server.
 
 The server should update only the submitted existing row IDs and append submitted new rows while preserving all other rows.
+
+For existing rows, saving must preserve the row's original `subjects_cache.group`
+and `group_name` unless the backend intentionally recalculates the group name
+from the selected group code. For new rows, the selected group code becomes
+`subjects_cache.group` and `group_name` is resolved from
+`Dinantia.dinantia_2_dades_alumnes`.
 
 New rows added with `+` are written to `subjects_cache` and assigned new `id` values during save.
 
@@ -558,7 +615,7 @@ Modal content:
 | Text input label | `Nom de l'avaluació` |
 | Text input placeholder | `p.e. 1a avaluació` |
 | `H2` | `Grups a avaluar` |
-| Group checkbox list | One checkbox per available `subjects_cache.group_name`; checked groups are included in the generated sheet. |
+| Group checkbox list | One checkbox per available individual group code from `subjects_cache.group`; checked group codes are included in the generated sheet. |
 | `H2` | `Avaluació de les matèries` |
 | Subtitle | `Introdueix els valors que podran triar els professors per avaluar cada matèria.` |
 | Dynamic inputs | One text input per subject-evaluation value, with `+` to add more. |
@@ -647,7 +704,7 @@ The main evaluation sheet is generated from `Grades` -> `subjects_cache`.
 
 For each `subjects_cache` row:
 
-1. Skip the row if `subjects_cache.group_name` is not one of the selected groups.
+1. Skip the row if `subjects_cache.group` does not contain one of the selected group codes.
 2. Read `subject_dinantia_group_av`.
 3. Resolve it against Dinantia groups by `id`, `name`, or `tag`.
 4. Prefer storing and using the resolved Dinantia group ID.

@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <meta charset="UTF-8">
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Arial, sans-serif;
+        color: #202124;
+        background: #f7f9fc;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+      }
+
+      main {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 28px 20px 96px;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: 0;
+      }
+
+      h2 {
+        margin: 24px 0 14px;
+        font-size: 20px;
+        letter-spacing: 0;
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        color: #3c4043;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      select,
+      input[type="text"] {
+        width: 100%;
+        min-width: 0;
+        height: 38px;
+        border: 1px solid #c7cdd6;
+        border-radius: 6px;
+        padding: 0 10px;
+        background: #fff;
+        color: #202124;
+        font-size: 14px;
+      }
+
+      input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+      }
+
+      .toolbar {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+        align-items: end;
+        margin: 22px 0;
+      }
+
+      .toolbar[hidden],
+      .table-wrap[hidden] {
+        display: none;
+      }
+
+      .status {
+        min-height: 24px;
+        color: #5f6368;
+      }
+
+      .status.error {
+        color: #b3261e;
+      }
+
+      .status.success {
+        color: #137333;
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+        border-top: 1px solid #d8dee8;
+        padding-top: 4px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #fff;
+      }
+
+      th,
+      td {
+        border-bottom: 1px solid #e4e8ef;
+        padding: 8px;
+        text-align: left;
+        vertical-align: middle;
+      }
+
+      th {
+        background: #e9eef6;
+        color: #202124;
+        font-size: 12px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      td {
+        min-width: 160px;
+      }
+
+      td.student-cell {
+        min-width: 220px;
+        font-weight: 600;
+      }
+
+      td.checkbox-cell {
+        min-width: 64px;
+        text-align: center;
+      }
+
+      tr.dirty td {
+        background: #fff6c7;
+      }
+
+      .save-bubble {
+        position: fixed;
+        right: 24px;
+        bottom: 24px;
+        width: 58px;
+        height: 58px;
+        border: 0;
+        border-radius: 50%;
+        background: #0b57d0;
+        color: #fff;
+        box-shadow: 0 8px 22px rgba(32, 33, 36, 0.28);
+        font-size: 26px;
+        line-height: 58px;
+        cursor: pointer;
+      }
+
+      .save-bubble:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+
+      .overlay {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: rgba(248, 250, 253, 0.72);
+        z-index: 10;
+      }
+
+      .overlay[hidden] {
+        display: none;
+      }
+
+      .loader {
+        display: grid;
+        gap: 14px;
+        justify-items: center;
+        color: #202124;
+        font-weight: 700;
+      }
+
+      .spinner {
+        width: 48px;
+        height: 48px;
+        border: 5px solid #c7d2e6;
+        border-top-color: #0b57d0;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      body.busy main,
+      body.busy .save-bubble {
+        filter: grayscale(0.35);
+      }
+
+      @media (max-width: 760px) {
+        .toolbar {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Avaluació</h1>
+      <div id="status" class="status">Carregant dades...</div>
+
+      <section id="toolbar" class="toolbar" hidden>
+        <label id="evaluation-label" for="evaluation-selector">
+          Avaluació
+          <select id="evaluation-selector"></select>
+        </label>
+        <label for="group-selector">
+          Grup
+          <select id="group-selector" disabled>
+            <option value="">Selecciona un grup...</option>
+          </select>
+        </label>
+        <label for="subject-selector">
+          Matèria
+          <select id="subject-selector" disabled>
+            <option value="">Selecciona una matèria...</option>
+          </select>
+        </label>
+      </section>
+
+      <section id="table-wrap" class="table-wrap" hidden>
+        <h2 id="table-title"></h2>
+        <table>
+          <thead id="table-head"></thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </section>
+    </main>
+
+    <button id="save-button" class="save-bubble" type="button" aria-label="Desar canvis" title="Desar canvis" disabled>💾</button>
+
+    <div id="overlay" class="overlay" hidden>
+      <div class="loader">
+        <div class="spinner" aria-hidden="true"></div>
+        <div>Desant...</div>
+      </div>
+    </div>
+
+    <script>
+      let state = {
+        evaluations: [],
+        selectedEvaluation: '',
+        evaluationData: null,
+        dirtyRows: new Map()
+      };
+
+      document.addEventListener('DOMContentLoaded', loadInitialData);
+      document.getElementById('evaluation-selector').addEventListener('change', handleEvaluationChange);
+      document.getElementById('group-selector').addEventListener('change', handleGroupChange);
+      document.getElementById('subject-selector').addEventListener('change', renderTable);
+      document.getElementById('save-button').addEventListener('click', saveChanges);
+
+      function loadInitialData() {
+        setBusy(true, 'Carregant dades...');
+        google.script.run
+          .withSuccessHandler(data => {
+            state.evaluations = data.evaluations || [];
+            renderEvaluationSelector();
+            document.getElementById('toolbar').hidden = false;
+            setBusy(false);
+
+            if (state.evaluations.length === 1) {
+              document.getElementById('evaluation-selector').value = state.evaluations[0].sheetName;
+              loadEvaluation(state.evaluations[0].sheetName);
+            } else {
+              setStatus('Selecciona una avaluació.');
+            }
+          })
+          .withFailureHandler(error => {
+            setBusy(false);
+            showError(error);
+          })
+          .getTeacherPanelData();
+      }
+
+      function renderEvaluationSelector() {
+        const selector = document.getElementById('evaluation-selector');
+        const label = document.getElementById('evaluation-label');
+        selector.innerHTML = '';
+
+        if (state.evaluations.length > 1) {
+          selector.appendChild(createOption('', 'Selecciona una avaluació...'));
+        }
+
+        state.evaluations.forEach(evaluation => {
+          selector.appendChild(createOption(evaluation.sheetName, evaluation.name));
+        });
+
+        label.hidden = state.evaluations.length <= 1;
+      }
+
+      function handleEvaluationChange() {
+        const sheetName = document.getElementById('evaluation-selector').value;
+        if (!sheetName) {
+          resetEvaluationUi();
+          return;
+        }
+
+        loadEvaluation(sheetName);
+      }
+
+      function loadEvaluation(sheetName) {
+        setBusy(true, 'Carregant avaluació...');
+        state.selectedEvaluation = sheetName;
+        state.evaluationData = null;
+        state.dirtyRows = new Map();
+        resetSelectors();
+        google.script.run
+          .withSuccessHandler(data => {
+            state.evaluationData = data;
+            state.dirtyRows = new Map();
+            renderGroupSelector();
+            setBusy(false);
+            setStatus(data.message || 'Selecciona un grup.');
+          })
+          .withFailureHandler(error => {
+            setBusy(false);
+            showError(error);
+          })
+          .getTeacherEvaluationData({ sheetName });
+      }
+
+      function renderGroupSelector() {
+        const selector = document.getElementById('group-selector');
+        selector.innerHTML = '<option value="">Selecciona un grup...</option>';
+
+        (state.evaluationData && state.evaluationData.groups || []).forEach(group => {
+          selector.appendChild(createOption(group, group));
+        });
+
+        selector.disabled = !(state.evaluationData && state.evaluationData.groups.length);
+        renderSubjectSelector();
+      }
+
+      function handleGroupChange() {
+        renderSubjectSelector();
+        renderTable();
+      }
+
+      function renderSubjectSelector() {
+        const groupName = document.getElementById('group-selector').value;
+        const selector = document.getElementById('subject-selector');
+        selector.innerHTML = '<option value="">Selecciona una matèria...</option>';
+
+        if (!state.evaluationData || !groupName) {
+          selector.disabled = true;
+          return;
+        }
+
+        uniqueSorted(state.evaluationData.rows
+          .filter(row => row.groupName === groupName)
+          .map(row => row.subjectFullName))
+          .forEach(subject => selector.appendChild(createOption(subject, subject)));
+
+        selector.disabled = false;
+      }
+
+      function renderTable() {
+        const groupName = document.getElementById('group-selector').value;
+        const subjectName = document.getElementById('subject-selector').value;
+        const tableWrap = document.getElementById('table-wrap');
+        const tableTitle = document.getElementById('table-title');
+        const tableHead = document.getElementById('table-head');
+        const tableBody = document.getElementById('table-body');
+
+        tableHead.innerHTML = '';
+        tableBody.innerHTML = '';
+
+        if (!state.evaluationData || !groupName || !subjectName) {
+          tableWrap.hidden = true;
+          return;
+        }
+
+        const conceptColumns = state.evaluationData.conceptColumns || [];
+        const rows = state.evaluationData.rows
+          .filter(row => row.groupName === groupName && row.subjectFullName === subjectName)
+          .slice()
+          .sort((a, b) => a.studentFullName.localeCompare(b.studentFullName, 'ca', { sensitivity: 'base' }));
+
+        tableTitle.textContent = `${groupName} - ${subjectName}`;
+        tableHead.appendChild(renderHeaderRow(conceptColumns));
+        rows.forEach(row => tableBody.appendChild(renderDataRow(row, conceptColumns)));
+        tableWrap.hidden = false;
+        updateSaveButton();
+      }
+
+      function renderHeaderRow(conceptColumns) {
+        const tr = document.createElement('tr');
+        ['Alumne', 'PI', 'Avaluació de la matèria']
+          .concat(conceptColumns.map(concept => concept.header))
+          .forEach(header => {
+            const th = document.createElement('th');
+            th.textContent = header;
+            tr.appendChild(th);
+          });
+        return tr;
+      }
+
+      function renderDataRow(row, conceptColumns) {
+        const tr = document.createElement('tr');
+        tr.dataset.sheetRow = row.sheetRow;
+        if (state.dirtyRows.has(String(row.sheetRow))) {
+          tr.classList.add('dirty');
+        }
+
+        const studentCell = document.createElement('td');
+        studentCell.className = 'student-cell';
+        studentCell.textContent = row.studentFullName;
+        tr.appendChild(studentCell);
+
+        const piCell = document.createElement('td');
+        piCell.className = 'checkbox-cell';
+        const piInput = document.createElement('input');
+        piInput.type = 'checkbox';
+        piInput.checked = row.pi === true;
+        piInput.dataset.role = 'pi';
+        piInput.addEventListener('change', () => markDirty(tr));
+        piCell.appendChild(piInput);
+        tr.appendChild(piCell);
+
+        const subjectCell = document.createElement('td');
+        subjectCell.appendChild(createSelectInput(
+          'subjectEvaluation',
+          state.evaluationData.subjectEvaluationOptions || [],
+          row.subjectEvaluation
+        ));
+        tr.appendChild(subjectCell);
+
+        conceptColumns.forEach(concept => {
+          const td = document.createElement('td');
+          const value = row.concepts && row.concepts[concept.header] || '';
+          const input = concept.options && concept.options.length
+            ? createSelectInput(`concept:${concept.header}`, concept.options, value)
+            : createTextInput(`concept:${concept.header}`, value);
+          td.appendChild(input);
+          tr.appendChild(td);
+        });
+
+        return tr;
+      }
+
+      function createSelectInput(role, options, value) {
+        const select = document.createElement('select');
+        select.dataset.role = role;
+        select.appendChild(createOption('', ''));
+        options.forEach(option => select.appendChild(createOption(option, option)));
+        select.value = value || '';
+        select.addEventListener('change', event => markDirty(event.target.closest('tr')));
+        return select;
+      }
+
+      function createTextInput(role, value) {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.dataset.role = role;
+        input.value = value || '';
+        input.addEventListener('input', event => markDirty(event.target.closest('tr')));
+        return input;
+      }
+
+      function markDirty(tr) {
+        if (!tr) return;
+        tr.classList.add('dirty');
+        state.dirtyRows.set(String(tr.dataset.sheetRow), collectRowPayload(tr));
+        updateSaveButton();
+      }
+
+      function collectRowPayload(tr) {
+        const concepts = {};
+        Array.from(tr.querySelectorAll('[data-role^="concept:"]')).forEach(input => {
+          concepts[input.dataset.role.slice('concept:'.length)] = input.value;
+        });
+
+        return {
+          sheetRow: Number(tr.dataset.sheetRow),
+          pi: tr.querySelector('[data-role="pi"]').checked,
+          subjectEvaluation: tr.querySelector('[data-role="subjectEvaluation"]').value,
+          concepts
+        };
+      }
+
+      function saveChanges() {
+        const rows = Array.from(state.dirtyRows.values());
+        if (!state.selectedEvaluation || !rows.length) return;
+
+        setBusy(true, 'Desant...');
+        google.script.run
+          .withSuccessHandler(data => {
+            state.evaluationData = data;
+            state.dirtyRows = new Map();
+            setBusy(false);
+            setStatus('Canvis desats.', 'success');
+            restoreSelectionAndRender();
+          })
+          .withFailureHandler(error => {
+            setBusy(false);
+            showError(error);
+          })
+          .saveTeacherEvaluationRows({
+            sheetName: state.selectedEvaluation,
+            rows
+          });
+      }
+
+      function restoreSelectionAndRender() {
+        const selectedGroup = document.getElementById('group-selector').value;
+        const selectedSubject = document.getElementById('subject-selector').value;
+        renderGroupSelector();
+
+        const groupSelector = document.getElementById('group-selector');
+        if (Array.from(groupSelector.options).some(option => option.value === selectedGroup)) {
+          groupSelector.value = selectedGroup;
+        }
+
+        renderSubjectSelector();
+        const subjectSelector = document.getElementById('subject-selector');
+        if (Array.from(subjectSelector.options).some(option => option.value === selectedSubject)) {
+          subjectSelector.value = selectedSubject;
+        }
+
+        renderTable();
+      }
+
+      function resetEvaluationUi() {
+        state.selectedEvaluation = '';
+        state.evaluationData = null;
+        state.dirtyRows = new Map();
+        resetSelectors();
+        setStatus('Selecciona una avaluació.');
+      }
+
+      function resetSelectors() {
+        const groupSelector = document.getElementById('group-selector');
+        const subjectSelector = document.getElementById('subject-selector');
+        groupSelector.innerHTML = '<option value="">Selecciona un grup...</option>';
+        subjectSelector.innerHTML = '<option value="">Selecciona una matèria...</option>';
+        groupSelector.disabled = true;
+        subjectSelector.disabled = true;
+        document.getElementById('table-wrap').hidden = true;
+        updateSaveButton();
+      }
+
+      function updateSaveButton() {
+        document.getElementById('save-button').disabled = !state.dirtyRows.size || document.body.classList.contains('busy');
+      }
+
+      function setBusy(isBusy, message) {
+        document.body.classList.toggle('busy', isBusy);
+        document.getElementById('overlay').hidden = !isBusy;
+        Array.from(document.querySelectorAll('select, input, button')).forEach(element => {
+          if (element.id === 'save-button') {
+            element.disabled = isBusy || !state.dirtyRows.size;
+          } else {
+            element.disabled = isBusy || element.dataset.locked === 'true';
+          }
+        });
+        if (message) setStatus(message);
+      }
+
+      function setStatus(message, type) {
+        const status = document.getElementById('status');
+        status.textContent = message || '';
+        status.className = `status ${type || ''}`.trim();
+      }
+
+      function showError(error) {
+        setStatus(error && error.message ? error.message : String(error), 'error');
+      }
+
+      function createOption(value, label) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = label;
+        return option;
+      }
+
+      function uniqueSorted(values) {
+        return Array.from(new Set(values.map(value => String(value || '').trim()).filter(Boolean)))
+          .sort((a, b) => a.localeCompare(b, 'ca', { sensitivity: 'base' }));
+      }
+    </script>
+  </body>
+</html>

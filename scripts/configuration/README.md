@@ -16,7 +16,9 @@ Data source:
 
 - `Grades` -> `subjects_cache`
 
-The page lets users select one group at a time from `subjects_cache.group_name`.
+The page lets users select one group code at a time from `subjects_cache.group`.
+If a cache row contains a comma-separated group array such as `1F,2F`, that
+same row appears when either `1F` or `2F` is selected.
 
 When a group is selected, the page shows editable dropdown rows for:
 
@@ -29,7 +31,8 @@ Rows can also be deleted from the editor and are removed from `subjects_cache` o
 
 The page includes a floating refresh button that warns users before rebuilding `Grades` -> `subjects_cache` from `Horaris` -> `GPU001`.
 
-The page also includes a floating `Crear avaluació` button. It creates:
+The page also includes a floating `Crear avaluació` button. It lets the user
+choose the group codes to evaluate, then creates:
 
 - a blank main evaluation sheet
 - a `{sheet_name}_config` sheet
@@ -55,12 +58,18 @@ buildSubjectsCache
 When the cache is rebuilt, the script:
 
 1. Reads `Horaris` -> `GPU001`.
-2. For each group/subject, keeps the teacher or tied teachers with the most scheduled hours.
-3. Deduplicates rows by group, teacher, and subject.
-4. Resolves group names from `Dinantia` -> `dinantia_2_dades_alumnes`.
-5. Resolves teacher names and emails from `Dades de professors` -> `Llista`.
-6. Resolves subject names from `Càrrega lectiva` -> `assignatures`.
-7. Rewrites `Grades` -> `subjects_cache` entirely.
+2. First cleans by `group + subject`, keeping only the teacher or tied teachers with the most rows.
+3. Collapses repeated `group + teacher + subject` rows.
+4. Then groups by `GPU001` column A, the event code.
+5. Joins all distinct groups for each kept teacher/subject event into one cache row.
+6. Resolves group names from `Dinantia` -> `dinantia_2_dades_alumnes`.
+7. Resolves teacher names and emails from `Dades de professors` -> `Llista`.
+8. Resolves subject names from `Càrrega lectiva` -> `assignatures`.
+9. Rewrites `Grades` -> `subjects_cache` entirely.
+
+The endpoint treats `subjects_cache.group` as a comma-separated array of group
+codes. New rows added from the editor use the currently selected group code.
+Existing multi-group rows keep their original group array when edited.
 
 The rebuild is dangerous because it can overwrite manual edits in `subjects_cache`.
 

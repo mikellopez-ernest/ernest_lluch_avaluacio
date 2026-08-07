@@ -278,8 +278,8 @@ The current local cache `Grades` -> `subjects_cache` provides:
 
 | Cache field | Purpose |
 | --- | --- |
-| `group` | Local timetable group code from `GPU001`. |
-| `group_name` | Dinantia group display name from local mapping table. |
+| `group` | One or more local timetable group codes from `GPU001`. Multi-group rows are comma-joined. |
+| `group_name` | One or more Dinantia group display names from the local mapping table. Multi-group rows are comma-joined. |
 | `prof_reduit` | Local teacher code from `GPU001`. |
 | `teacher_full_name` | Local teacher display name. |
 | `teacher_email` | Local teacher email from `Dades de professors` -> `Llista.CORREU INSTIT`. |
@@ -287,7 +287,17 @@ The current local cache `Grades` -> `subjects_cache` provides:
 | `subject_full_name` | Local subject display name. |
 | `subject_dinantia_group_av` | Dinantia group ID selected for assessment. |
 
+The configuration endpoint lists and saves `subject_dinantia_group_av` as the
+Dinantia group `id`, because student membership values in account data are also
+group IDs. Existing fallback values may still be names or tags, so generation
+code resolves them against group `id`, `name`, and `tag` before matching
+students.
+
 For evaluation-sheet generation, student account membership is read from `accounts.groups.member`, which contains Dinantia group IDs as strings. The implementation should fetch all accounts once, filter students, index them by membership group, and then expand `subjects_cache` rows from that in-memory index.
+
+When selecting local groups to include in an evaluation, use individual group
+codes from `subjects_cache.group`. If a row contains `1F,2F`, it belongs to both
+selected groups after splitting by comma.
 
 This cache is useful for display and local configuration, but it is not yet sufficient for Dinantia attendance writes.
 

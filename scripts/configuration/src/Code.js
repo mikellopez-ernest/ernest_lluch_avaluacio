@@ -77,7 +77,9 @@ function getConfigurationData() {
   assertAllowedUser_();
 
   const cacheRows = readSubjectsCacheRows_();
-  const groupNames = uniqueSorted_(cacheRows.map(row => row.groupName));
+  const groupNames = uniqueSorted_(cacheRows.reduce((groups, row) => (
+    groups.concat(splitGroupCodes_(row.group))
+  ), []));
   const subjects = uniqueSorted_(cacheRows.map(row => row.subjectFullName));
   const teachers = uniqueSorted_(cacheRows.map(row => row.teacherFullName));
   const dinantiaGroups = uniqueSorted_(fetchDinantiaGroups_().map(group => group.name));
@@ -85,7 +87,7 @@ function getConfigurationData() {
   return {
     title: 'Configuració',
     groups: groupNames,
-    rowsByGroup: groupRowsByName_(cacheRows),
+    rowsByGroup: groupRowsByGroupCode_(cacheRows),
     options: {
       subjects,
       teachers,
@@ -97,13 +99,13 @@ function getConfigurationData() {
 function saveSubjectsCacheEdits(payload) {
   assertAllowedUser_();
 
-  const groupName = String(payload && payload.groupName || '').trim();
+  const selectedGroupCode = String(payload && payload.groupName || '').trim();
   const rows = Array.isArray(payload && payload.rows) ? payload.rows : [];
   const deletedRowIds = new Set((Array.isArray(payload && payload.deletedRowIds) ? payload.deletedRowIds : [])
     .map(id => String(id || '').trim())
     .filter(Boolean));
 
-  if (!groupName) {
+  if (!selectedGroupCode) {
     throw new Error('Falta el grup.');
   }
 
@@ -112,8 +114,7 @@ function saveSubjectsCacheEdits(payload) {
 
   try {
     const existingRows = readSubjectsCacheRows_();
-    const sourceGroup = existingRows.find(row => row.groupName === groupName);
-    const groupCode = sourceGroup ? sourceGroup.group : '';
+    const groupName = getGroupNameForGroupCode_(selectedGroupCode);
     const rowsById = new Map(existingRows
       .filter(row => !deletedRowIds.has(String(row.id)))
       .map(row => [String(row.id), row]));
@@ -121,11 +122,12 @@ function saveSubjectsCacheEdits(payload) {
 
     rows.forEach(row => {
       const id = String(row.id || '').trim();
+      const existingRow = id && rowsById.has(id) ? rowsById.get(id) : null;
       const teacherInfo = findTeacherInfoByName_(row.teacherFullName);
       const updatedRow = {
         id: Number(id) || '',
-        group: String(row.group || groupCode || '').trim(),
-        groupName,
+        group: String(row.group || existingRow && existingRow.group || selectedGroupCode).trim(),
+        groupName: String(row.groupName || existingRow && existingRow.groupName || groupName).trim(),
         profReduit: teacherInfo.code,
         teacherFullName: String(row.teacherFullName || '').trim(),
         teacherEmail: teacherInfo.email,
@@ -286,11 +288,13 @@ function buildSubjectsCache() {
     const groupNamesByUntisName = buildGroupNamesByUntisName_(dinantiaRows);
     const teacherInfoByCode = buildTeacherInfoByCode_(teacherRows);
     const subjectNamesByCode = buildSubjectNamesByCode_(subjectRows);
-    const dominantTeacherRows = filterGpu001RowsByDominantTeacherHours_(gpu001Rows);
-    const dedupedRows = dedupeGpu001Rows_(dominantTeacherRows);
+    const cleanedRows = dedupeGpu001RowsByTeacherGroupSubject_(
+      filterGpu001RowsByDominantTeacherForGroupSubject_(gpu001Rows)
+    );
+    const eventRows = buildGpu001EventRowsFromCleanRows_(cleanedRows);
 
-    const cacheRows = dedupedRows.map(row => {
-      const groupName = groupNamesByUntisName.get(normalizeCode_(row.group)) || '';
+    const cacheRows = eventRows.map(row => {
+      const groupName = resolveGroupNamesForCodes_(row.groups, groupNamesByUntisName);
       const teacherInfo = teacherInfoByCode.get(normalizeCode_(row.profReduit)) || {};
       const teacherFullName = teacherInfo.fullName || '';
       const teacherEmail = teacherInfo.email || '';
@@ -312,7 +316,8 @@ function buildSubjectsCache() {
 
     return {
       rowsRead: gpu001Rows.length,
-      rowsAfterDominantTeacherFilter: dominantTeacherRows.length,
+      rowsAfterGroupSubjectCleanup: cleanedRows.length,
+      eventRowsWritten: eventRows.length,
       rowsWritten: cacheRows.length,
       status: 'subjects_cache rebuilt.'
     };
@@ -386,16 +391,19 @@ function writeSubjectsCacheRows_(rows) {
   cacheSheet.autoResizeColumns(1, cacheHeaders.length);
 }
 
-function groupRowsByName_(rows) {
+function groupRowsByGroupCode_(rows) {
   return rows.reduce((groups, row) => {
-    if (!groups[row.groupName]) groups[row.groupName] = [];
+    splitGroupCodes_(row.group).forEach(groupCode => {
+      if (!groups[groupCode]) groups[groupCode] = [];
 
-    groups[row.groupName].push({
-      id: row.id,
-      group: row.group,
-      subjectFullName: row.subjectFullName,
-      teacherFullName: row.teacherFullName,
-      subjectDinantiaGroupAv: row.subjectDinantiaGroupAv
+      groups[groupCode].push({
+        id: row.id,
+        group: row.group,
+        groupName: row.groupName,
+        subjectFullName: row.subjectFullName,
+        teacherFullName: row.teacherFullName,
+        subjectDinantiaGroupAv: row.subjectDinantiaGroupAv
+      });
     });
 
     return groups;
@@ -510,7 +518,7 @@ function writeEvaluationConfig_(sheet, subjectValues, concepts) {
 function populateEvaluationSheet_(sheet, subjectValues, concepts, logPrefix, runId, selectedGroups) {
   const selectedGroupSet = new Set((selectedGroups || []).map(group => normalizeCode_(group)));
   const cacheRows = readSubjectsCacheRows_()
-    .filter(row => selectedGroupSet.has(normalizeCode_(row.groupName)));
+    .filter(row => splitGroupCodes_(row.group).some(groupCode => selectedGroupSet.has(normalizeCode_(groupCode))));
   const groupAliasMap = buildDinantiaGroupAliasMap_();
   const groupIds = uniqueSorted_(cacheRows.map(row => resolveDinantiaGroupId_(row.subjectDinantiaGroupAv, groupAliasMap)));
   Logger.log('%s populate cacheRows=%s uniqueDinantiaGroups=%s sampleGroups=%s', logPrefix, cacheRows.length, groupIds.length, groupIds.slice(0, 10).join(','));
@@ -962,28 +970,59 @@ function readGpu001Rows_(sheet) {
     .filter(row => row.group || row.profReduit || row.matReduit);
 }
 
-function dedupeGpu001Rows_(rows) {
-  const seen = new Set();
-  const deduped = [];
+function buildGpu001EventRowsFromCleanRows_(rows) {
+  const rowsByEvent = new Map();
 
-  rows.forEach(row => {
-    const key = [
-      normalizeCode_(row.group),
-      normalizeCode_(row.profReduit),
-      normalizeCode_(row.matReduit)
-    ].join('||');
+  rows.forEach((row, index) => {
+    const eventKey = normalizeEventCode_(row.sourceId) || `__ROW_${index}`;
+    if (!rowsByEvent.has(eventKey)) {
+      rowsByEvent.set(eventKey, []);
+    }
 
-    if (seen.has(key)) return;
-
-    seen.add(key);
-    deduped.push(row);
+    rowsByEvent.get(eventKey).push(row);
   });
 
-  return deduped;
+  const eventRows = [];
+
+  rowsByEvent.forEach(eventRowsRaw => {
+    const groupedRows = new Map();
+
+    eventRowsRaw.forEach(row => {
+      const key = [
+        normalizeCode_(row.profReduit),
+        normalizeCode_(row.matReduit)
+      ].join('||');
+
+      if (!groupedRows.has(key)) {
+        groupedRows.set(key, {
+          sourceId: row.sourceId,
+          groups: [],
+          profReduit: row.profReduit,
+          matReduit: row.matReduit,
+          classroomName: row.classroomName,
+          weekday: row.weekday,
+          scheduleHour: row.scheduleHour
+        });
+      }
+
+      const groupedRow = groupedRows.get(key);
+      if (!groupedRow.groups.some(group => normalizeCode_(group) === normalizeCode_(row.group))) {
+        groupedRow.groups.push(row.group);
+      }
+    });
+
+    groupedRows.forEach(row => {
+      eventRows.push(Object.assign({}, row, {
+        group: row.groups.join(',')
+      }));
+    });
+  });
+
+  return eventRows;
 }
 
-function filterGpu001RowsByDominantTeacherHours_(rows) {
-  const teacherHoursByGroupSubject = new Map();
+function filterGpu001RowsByDominantTeacherForGroupSubject_(rows) {
+  const teacherCountsByGroupSubject = new Map();
 
   rows.forEach(row => {
     const groupSubjectKey = [
@@ -994,22 +1033,22 @@ function filterGpu001RowsByDominantTeacherHours_(rows) {
 
     if (!groupSubjectKey || !teacherKey) return;
 
-    if (!teacherHoursByGroupSubject.has(groupSubjectKey)) {
-      teacherHoursByGroupSubject.set(groupSubjectKey, new Map());
+    if (!teacherCountsByGroupSubject.has(groupSubjectKey)) {
+      teacherCountsByGroupSubject.set(groupSubjectKey, new Map());
     }
 
-    const teacherHours = teacherHoursByGroupSubject.get(groupSubjectKey);
-    teacherHours.set(teacherKey, (teacherHours.get(teacherKey) || 0) + 1);
+    const teacherCounts = teacherCountsByGroupSubject.get(groupSubjectKey);
+    teacherCounts.set(teacherKey, (teacherCounts.get(teacherKey) || 0) + 1);
   });
 
   const keptTeachersByGroupSubject = new Map();
 
-  teacherHoursByGroupSubject.forEach((teacherHours, groupSubjectKey) => {
-    const maxHours = Math.max.apply(null, Array.from(teacherHours.values()));
+  teacherCountsByGroupSubject.forEach((teacherCounts, groupSubjectKey) => {
+    const maxCount = Math.max.apply(null, Array.from(teacherCounts.values()));
     const keptTeachers = new Set();
 
-    teacherHours.forEach((hours, teacherKey) => {
-      if (hours === maxHours) {
+    teacherCounts.forEach((count, teacherKey) => {
+      if (count === maxCount) {
         keptTeachers.add(teacherKey);
       }
     });
@@ -1027,6 +1066,26 @@ function filterGpu001RowsByDominantTeacherHours_(rows) {
 
     return !keptTeachers || keptTeachers.has(teacherKey);
   });
+}
+
+function dedupeGpu001RowsByTeacherGroupSubject_(rows) {
+  const seen = new Set();
+  const deduped = [];
+
+  rows.forEach(row => {
+    const key = [
+      normalizeCode_(row.profReduit),
+      normalizeCode_(row.group),
+      normalizeCode_(row.matReduit)
+    ].join('||');
+
+    if (seen.has(key)) return;
+
+    seen.add(key);
+    deduped.push(row);
+  });
+
+  return deduped;
 }
 
 function buildGroupNamesByUntisName_(rows) {
@@ -1048,6 +1107,41 @@ function buildGroupNamesByUntisName_(rows) {
   });
 
   return map;
+}
+
+function resolveGroupNamesForCodes_(groupCodes, groupNamesByUntisName) {
+  const resolvedNames = [];
+  const seen = new Set();
+
+  (Array.isArray(groupCodes) ? groupCodes : String(groupCodes || '').split(','))
+    .map(groupCode => String(groupCode || '').trim())
+    .filter(Boolean)
+    .forEach(groupCode => {
+      const groupName = groupNamesByUntisName.get(normalizeCode_(groupCode)) || '';
+      const key = normalizeCode_(groupName);
+      if (!groupName || seen.has(key)) return;
+
+      seen.add(key);
+      resolvedNames.push(groupName);
+    });
+
+  return resolvedNames.join(', ');
+}
+
+function getGroupNameForGroupCode_(groupCode) {
+  const dinantiaRows = readRowsByHeader_(
+    getRequiredSheet_(openLogicalTableSpreadsheet_(DINANTIA_TABLE_NAME), DINANTIA_GROUPS_SHEET_NAME)
+  );
+  const groupNamesByUntisName = buildGroupNamesByUntisName_(dinantiaRows);
+
+  return resolveGroupNamesForCodes_([groupCode], groupNamesByUntisName);
+}
+
+function splitGroupCodes_(value) {
+  return String(value || '')
+    .split(',')
+    .map(groupCode => groupCode.trim())
+    .filter(Boolean);
 }
 
 function buildTeacherInfoByCode_(rows) {
@@ -1232,6 +1326,10 @@ function normalizeCode_(value) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toUpperCase();
+}
+
+function normalizeEventCode_(value) {
+  return String(value || '').trim();
 }
 
 function looksLikeEmail_(value) {

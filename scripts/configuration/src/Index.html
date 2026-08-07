@@ -537,6 +537,7 @@
         item.className = 'cache-row';
         item.dataset.id = row.id || '';
         item.dataset.group = row.group || '';
+        item.dataset.groupName = row.groupName || '';
         item.dataset.dirty = row.id ? 'false' : 'true';
 
         const subjectSelect = createSelect('subject', state.options.subjects, row.subjectFullName);
@@ -586,11 +587,10 @@
         const groupName = document.getElementById('group-selector').value;
         if (!groupName) return;
 
-        const existingRows = state.rowsByGroup[groupName] || [];
-        const sourceGroup = existingRows.length ? existingRows[0].group : '';
         document.getElementById('rows').appendChild(createEditableRow({
           id: '',
-          group: sourceGroup,
+          group: groupName,
+          groupName: '',
           subjectFullName: '',
           teacherFullName: '',
           subjectDinantiaGroupAv: ''
@@ -607,6 +607,7 @@
         const rows = Array.from(document.querySelectorAll('.cache-row[data-dirty="true"]')).map(row => ({
           id: row.dataset.id,
           group: row.dataset.group,
+          groupName: row.dataset.groupName,
           subjectFullName: row.querySelector('select[data-role="subject"]').value,
           teacherFullName: row.querySelector('select[data-role="teacher"]').value,
           subjectDinantiaGroupAv: row.querySelector('select[data-role="dinantia-group"]').value
