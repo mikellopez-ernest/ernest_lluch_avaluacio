@@ -520,7 +520,9 @@ function populateEvaluationSheet_(sheet, subjectValues, concepts, logPrefix, run
   const cacheRows = readSubjectsCacheRows_()
     .filter(row => splitGroupCodes_(row.group).some(groupCode => selectedGroupSet.has(normalizeCode_(groupCode))));
   const groupAliasMap = buildDinantiaGroupAliasMap_();
-  const groupIds = uniqueSorted_(cacheRows.map(row => resolveDinantiaGroupId_(row.subjectDinantiaGroupAv, groupAliasMap)));
+  const groupIds = uniqueSorted_(cacheRows.reduce((ids, row) => (
+    ids.concat(resolveDinantiaGroupIds_(row.subjectDinantiaGroupAv, groupAliasMap))
+  ), []));
   Logger.log('%s populate cacheRows=%s uniqueDinantiaGroups=%s sampleGroups=%s', logPrefix, cacheRows.length, groupIds.length, groupIds.slice(0, 10).join(','));
   updateEvaluationProgress_(runId, 'running', `S'han trobat ${cacheRows.length} configuracions i ${groupIds.length} grups de Dinantia.`, {
     stage: 'cache_loaded',
@@ -529,6 +531,7 @@ function populateEvaluationSheet_(sheet, subjectValues, concepts, logPrefix, run
   });
   const studentsByGroupId = fetchStudentsByGroupIds_(groupIds, logPrefix, runId);
   const headers = [
+    'group',
     'group_name',
     'teacher_full_name',
     'teacher_email',
@@ -540,11 +543,14 @@ function populateEvaluationSheet_(sheet, subjectValues, concepts, logPrefix, run
   const values = [headers];
 
   cacheRows.forEach(cacheRow => {
-    const resolvedGroupId = resolveDinantiaGroupId_(cacheRow.subjectDinantiaGroupAv, groupAliasMap);
-    const students = studentsByGroupId.get(resolvedGroupId) || [];
+    const resolvedGroupIds = resolveDinantiaGroupIds_(cacheRow.subjectDinantiaGroupAv, groupAliasMap);
+    const students = uniqueStudents_(resolvedGroupIds.reduce((allStudents, groupId) => (
+      allStudents.concat(studentsByGroupId.get(groupId) || [])
+    ), []));
 
     students.forEach(student => {
       values.push([
+        cacheRow.group,
         cacheRow.groupName,
         cacheRow.teacherFullName,
         cacheRow.teacherEmail,
@@ -598,12 +604,13 @@ function formatEvaluationMainSheet_(sheet, columnCount, rowCount) {
     .setWrap(true);
   sheet.autoResizeColumns(1, columnCount);
   sheet.setColumnWidth(1, 150);
-  sheet.setColumnWidth(2, 220);
+  sheet.setColumnWidth(2, 150);
   sheet.setColumnWidth(3, 220);
   sheet.setColumnWidth(4, 220);
   sheet.setColumnWidth(5, 220);
-  sheet.setColumnWidth(6, 80);
-  sheet.setColumnWidth(7, 190);
+  sheet.setColumnWidth(6, 220);
+  sheet.setColumnWidth(7, 80);
+  sheet.setColumnWidth(8, 190);
   sheet.hideColumns(columnCount);
 }
 
@@ -616,8 +623,8 @@ function applyEvaluationValidations_(sheet, dataRowCount, subjectValues, concept
     .setAllowInvalid(false)
     .build();
 
-  sheet.getRange(2, 6, dataRowCount, 1).setDataValidation(checkboxRule);
-  sheet.getRange(2, 7, dataRowCount, 1).setDataValidation(subjectRule);
+  sheet.getRange(2, 7, dataRowCount, 1).setDataValidation(checkboxRule);
+  sheet.getRange(2, 8, dataRowCount, 1).setDataValidation(subjectRule);
 
   concepts.forEach((concept, index) => {
     if (!concept.options.length) return;
@@ -627,7 +634,7 @@ function applyEvaluationValidations_(sheet, dataRowCount, subjectValues, concept
       .setAllowInvalid(false)
       .build();
 
-    sheet.getRange(2, 8 + index, dataRowCount, 1).setDataValidation(rule);
+    sheet.getRange(2, 9 + index, dataRowCount, 1).setDataValidation(rule);
   });
 }
 
@@ -845,6 +852,27 @@ function resolveDinantiaGroupId_(value, groupAliasMap) {
   if (!cleanValue) return '';
 
   return groupAliasMap.get(normalizeGroupAlias_(cleanValue)) || normalizeDinantiaGroupId_(cleanValue);
+}
+
+function resolveDinantiaGroupIds_(value, groupAliasMap) {
+  return uniqueSorted_(String(value || '')
+    .split(',')
+    .map(part => resolveDinantiaGroupId_(part, groupAliasMap))
+    .filter(Boolean));
+}
+
+function uniqueStudents_(students) {
+  const studentsById = new Map();
+
+  students.forEach(student => {
+    const id = String(student && student.id || '').trim();
+    if (!id || studentsById.has(id)) return;
+
+    studentsById.set(id, student);
+  });
+
+  return Array.from(studentsById.values())
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ca'));
 }
 
 function normalizeDinantiaGroupId_(value) {

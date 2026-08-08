@@ -2,6 +2,11 @@
 
 Google Apps Script web app for teacher-facing evaluation workflows.
 
+Canonical behavior is specified in
+[`docs/teacher-pannel-spec.md`](../../docs/teacher-pannel-spec.md). Generated
+sheet contracts are specified in
+[`docs/database-spec.md`](../../docs/database-spec.md).
+
 ## Apps Script
 
 - Script ID: `1CLBSkbrZagzWSX8VxBot_sPZaQVBnexGdocsCm-_xeMTRqoIgI_hpoby`
@@ -19,6 +24,14 @@ Data sources:
 - Generated config sheets named `{sheet_name}_config`
 
 The endpoint never reads from or writes to `Grades` -> `subjects_cache`.
+Generated sheets include a `group` column with comma-separated local group
+codes. The panel displays groups from `group_name`, which may also contain
+comma-separated display groups such as `2n ESO A, 2n ESO B`. A shared row is
+visible from any selected display group in that list, but it is still saved
+once by its original spreadsheet row number.
+
+The `PI` column is fixed narrow in the UI, and blocking operations use a faded
+full-page loading overlay with the current status text under the spinner.
 
 ## Behavior
 
@@ -35,7 +48,7 @@ After an evaluation is selected, the endpoint:
 1. Reads the active user's email.
 2. Opens the selected generated evaluation sheet.
 3. Filters rows where `teacher_email` matches the active user's email, trimmed and case-insensitive.
-4. Shows only groups and subjects present in those filtered rows.
+4. Shows only groups and subjects present in those filtered rows. If `group_name` contains comma-separated groups, each group appears as an available selector value.
 5. Shows the editable table only after both `Grup` and `Matèria` are selected.
 
 If no row matches the teacher email, the endpoint shows:
@@ -55,6 +68,9 @@ Editable values:
 Rows are identified for saving by their original spreadsheet row number, not by student name or display order.
 
 Changed rows are highlighted yellow. The floating save button sends only dirty rows, blocks the page while saving, reloads the data from the spreadsheet, and clears yellow highlighting only after the reload succeeds.
+
+The backend calculates writable column positions from headers, so saves remain
+compatible with generated sheets that include metadata columns before `PI`.
 
 ## Public Functions
 

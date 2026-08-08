@@ -2,8 +2,6 @@
 
 This document defines the teacher-facing endpoint that consumes evaluation sheets created by the `configuration` script.
 
-The Apps Script project folder is `scripts/teacher_pannel`.
-
 ## Purpose
 
 The teacher panel lets teachers fill in generated evaluation tables without using the configuration endpoint.
@@ -36,6 +34,8 @@ Deploy as a web app.
 | Who has access | Users in `iernestlluch.cat` |
 
 The script also checks the active user's email domain and rejects users outside `@iernestlluch.cat`.
+
+Local `.clasp.json` files are intentionally ignored by git. The script folder must keep a local `.clasp.json` pointing to the script ID above so `clasp push` and `clasp deploy` target the correct Apps Script project.
 
 ## Data Sources
 
@@ -86,7 +86,8 @@ Generated evaluation sheets contain:
 
 | Header | Purpose |
 | --- | --- |
-| `group_name` | Display group. |
+| `group` | Canonical local group code array copied from `subjects_cache.group`. It may contain comma-separated values such as `1F,2F`. |
+| `group_name` | Display group name or comma-separated display group names. |
 | `teacher_full_name` | Teacher name. |
 | `teacher_email` | Teacher email. |
 | `subject_full_name` | Subject name. |
@@ -94,9 +95,25 @@ Generated evaluation sheets contain:
 | `PI` | Editable checkbox column. |
 | `Avaluació de la matèria` | Editable subject evaluation dropdown. |
 | custom concept columns | Editable configured concepts. |
-| `student_account_id` | Hidden Dinantia student account id reserved for future sync workflows. |
+| `student_account_id` | Hidden Dinantia student account id reserved for sync workflows. |
 
-The endpoint identifies writable rows by their original spreadsheet row number, `sheetRow`. It must never use student name, group, subject, or visible row order as the write identity.
+`group_name` can contain a single display group, such as:
+
+```text
+2n ESO A
+```
+
+or a comma-separated group array, such as:
+
+```text
+2n ESO A, 2n ESO B, 2n ESO C, 2n ESO D, 2n ESO E
+```
+
+When a row has a group array, it is one unique grade record and must still be saved only once. The row is visible when the selected `Grup` matches any comma-separated value in `group_name`.
+
+The teacher panel uses `group_name`, not `group`, to build the visible `Grup` selector. The `group` column remains non-writable local metadata.
+
+The endpoint identifies writable rows by their original spreadsheet row number, `sheetRow`. It must never use student name, group, subject, selected group, or visible row order as the write identity.
 
 Teacher-specific views match the active user's email against `teacher_email`. Email matching is trimmed and case-insensitive.
 
@@ -117,7 +134,7 @@ The endpoint reads `{sheet_name}_config` for dropdown values.
 
 For custom concept columns:
 
-- Show all remaining main-sheet headers after column G exactly as they appear.
+- Show all remaining main-sheet headers after `Avaluació de la matèria` exactly as they appear.
 - Exclude `student_account_id`.
 - If the matching config column has values, render a dropdown.
 - If the matching config column has no values, render an open text field.
@@ -134,7 +151,7 @@ After the evaluation is selected or auto-loaded, show:
 
 | Control | Source |
 | --- | --- |
-| `Grup` | Unique `group_name` values in rows matching the active teacher email. |
+| `Grup` | Unique comma-separated values from `group_name` in rows matching the active teacher email. |
 | `Matèria` | Unique `subject_full_name` values for the selected group and active teacher email. |
 
 The table is shown only after both `Grup` and `Matèria` are selected.
@@ -142,8 +159,10 @@ The table is shown only after both `Grup` and `Matèria` are selected.
 The table title is:
 
 ```text
-{group_name} - {subject_full_name}
+{common_group_name} - {subject_full_name}
 ```
+
+When all matching rows use a group array, `common_group_name` is the common part of the group names. For example, `4t ESO A, 4t ESO B` is displayed as `4t ESO`.
 
 Rows are sorted alphabetically by `student_full_name`.
 
@@ -156,7 +175,20 @@ Table columns:
 | `Avaluació de la matèria` | `Avaluació de la matèria` |
 | remaining concept headers | matching concept columns |
 
+The `PI` column is mandatory and must be fixed-width. It should be narrow enough to contain only the `PI` header and one checkbox per data row. It must not auto-expand like normal table columns.
+
 Any edited row is highlighted yellow.
+
+## Busy State
+
+For loading, saving, synchronization, and other blocking operations, the page must:
+
+1. Fade the whole page.
+2. Block user interaction.
+3. Show a centered animated loading icon.
+4. Show the current status/progress text below that icon.
+
+During a blocking operation, status text must appear only inside the centered overlay, not below the page title. After the operation finishes, the overlay closes and the normal status area below the title can show the final success or error message.
 
 ## Save Flow
 
@@ -165,7 +197,7 @@ The endpoint has a floating save button with a 3.5-inch disk icon.
 When saving:
 
 1. Disable the page.
-2. Change the page state visually and show a centered loading indicator.
+2. Show the full-page busy overlay.
 3. Send only dirty rows to the backend.
 4. Re-check the selected evaluation status in `avaluacions`.
 5. Confirm each edited `sheetRow` still belongs to the active teacher email.
@@ -183,6 +215,8 @@ Writable fields:
 | custom concept columns | String from dropdown or open text input. |
 
 Non-writable fields such as group, teacher, subject, student name, and `student_account_id` must not be changed by this endpoint.
+
+The backend must calculate writable column positions from headers, not from fixed column letters. This keeps saves correct when generated sheets include optional metadata columns such as `group`.
 
 ## Public Functions
 

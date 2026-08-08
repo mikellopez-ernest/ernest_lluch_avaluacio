@@ -2,6 +2,11 @@
 
 Google Apps Script web app for configuration workflows.
 
+Canonical behavior is specified in
+[`docs/configuration-endpoint-spec.md`](../../docs/configuration-endpoint-spec.md).
+Database sheet contracts are specified in
+[`docs/database-spec.md`](../../docs/database-spec.md).
+
 ## Apps Script
 
 - Script ID: `1qj0U_bBSfrHpxSzXt5goCaloM_npZAZcRiw6IiGdLMI_XrrP595eiehD`
@@ -28,6 +33,8 @@ When a group is selected, the page shows editable dropdown rows for:
 
 Manual edits are saved directly to `Grades` -> `subjects_cache`.
 Rows can also be deleted from the editor and are removed from `subjects_cache` on save.
+When saving, loading, rebuilding, or creating evaluations, the page fades behind
+a blocking overlay with an animated loading icon and the current status text.
 
 The page includes a floating refresh button that warns users before rebuilding `Grades` -> `subjects_cache` from `Horaris` -> `GPU001`.
 
@@ -45,7 +52,9 @@ Evaluation expansion reads Dinantia accounts once, filters `Student` accounts, a
 
 During evaluation creation, the page polls progress by run ID and shows the latest stage in the status area.
 
-Generated evaluation sheets copy the teacher email next to the teacher name, always include a `PI` checkbox column defaulting to false, and include a hidden `student_account_id` column for future sync work.
+Generated evaluation sheets copy the `subjects_cache.group` array, copy the
+teacher email next to the teacher name, always include a `PI` checkbox column
+defaulting to false, and include a hidden `student_account_id` column.
 
 `Grades` -> `avaluacions` stores `Estat = Creada` for new evaluations and validates the status cell against the configured workflow states.
 

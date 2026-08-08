@@ -16,11 +16,14 @@ This file tracks future work and open decisions only. Implemented specifications
 - The endpoint can create evaluation sheets from `subjects_cache`.
 - Evaluation creation lets users choose which group codes are included.
 - Dinantia student expansion uses `accounts.groups.member` string memberships.
-- Generated evaluation sheets include `teacher_email`, `PI`, and hidden
+- Generated evaluation sheets include `group`, `teacher_email`, `PI`, and hidden
   `student_account_id` columns.
+- Shared group rows are visible in every display group listed in `group_name`,
+  while saving still updates one spreadsheet row.
 - Evaluation creation exposes progress polling by run ID.
 - `teacher_pannel` has a first deployed version for teacher evaluation editing.
 
 ## Open Items
 
-- Define future workflows for writing attendance or grades back to Dinantia, including teacher account mapping and course mapping.
+- Define workflows for writing attendance or grades back to Dinantia, including teacher account mapping and course mapping.
+- Confirm the exact Dinantia attendance `groups` payload shape before writing attendance records.

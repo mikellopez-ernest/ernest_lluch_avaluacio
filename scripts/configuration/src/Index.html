@@ -195,6 +195,63 @@
         z-index: 20;
       }
 
+      .busy-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        display: grid;
+        place-items: center;
+        background: rgba(247, 248, 250, 0.78);
+        backdrop-filter: blur(1px);
+      }
+
+      .busy-overlay[hidden] {
+        display: none;
+      }
+
+      .busy-loader {
+        display: grid;
+        gap: 14px;
+        justify-items: center;
+        max-width: min(380px, calc(100vw - 48px));
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.94);
+        box-shadow: 0 14px 36px rgba(32, 33, 36, 0.2);
+        padding: 30px 34px;
+        color: var(--text);
+        font-weight: 700;
+        text-align: center;
+      }
+
+      .busy-spinner {
+        width: 50px;
+        height: 50px;
+        border: 5px solid #c7d2e6;
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+
+      .busy-message {
+        min-height: 20px;
+        line-height: 1.4;
+      }
+
+      body.busy main,
+      body.busy .refresh-bubble,
+      body.busy .create-bubble {
+        filter: grayscale(0.25);
+        opacity: 0.36;
+        pointer-events: none;
+        user-select: none;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
       .empty {
         margin-top: 24px;
         padding: 28px;
@@ -405,6 +462,13 @@
     <button id="create-evaluation" class="icon-button create-bubble" type="button" aria-label="Crear avaluació">☑</button>
     <button id="refresh" class="icon-button refresh-bubble" type="button" aria-label="Reconstruir cache">↻</button>
 
+    <div id="busy-overlay" class="busy-overlay" hidden>
+      <div class="busy-loader" role="status" aria-live="polite" aria-busy="true">
+        <div class="busy-spinner" aria-hidden="true"></div>
+        <div id="busy-message" class="busy-message">Carregant...</div>
+      </div>
+    </div>
+
     <div id="rebuild-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="rebuild-modal-title">
       <div class="modal">
         <h2 id="rebuild-modal-title">Reconstruir la cache?</h2>
@@ -482,15 +546,19 @@
       });
 
       function loadData() {
-        setStatus('Carregant dades...');
+        setBusy(true, 'Carregant dades...');
         google.script.run
           .withSuccessHandler(data => {
             state = data;
             renderGroupSelector();
             renderSelectedGroup();
+            setBusy(false);
             setStatus('');
           })
-          .withFailureHandler(showError)
+          .withFailureHandler(error => {
+            setBusy(false);
+            showError(error);
+          })
           .getConfigurationData();
       }
 
@@ -618,8 +686,7 @@
           return;
         }
 
-        setBusy(true);
-        setStatus('Desant...');
+        setBusy(true, 'Desant...');
 
         google.script.run
           .withSuccessHandler(data => {
@@ -652,8 +719,7 @@
 
       function rebuildCache() {
         closeRebuildModal();
-        setBusy(true);
-        setStatus('Reconstruint cache...');
+        setBusy(true, 'Reconstruint cache...');
 
         google.script.run
           .withSuccessHandler(() => {
@@ -808,9 +874,8 @@
         }
 
         closeEvaluationModal();
-        setBusy(true);
         const runId = createRunId();
-        setStatus("S'ha iniciat la creació de l'avaluació. El procés pot trigar uns minuts...");
+        setBusy(true, "S'ha iniciat la creació de l'avaluació. El procés pot trigar uns minuts...");
         pollEvaluationProgress(runId);
 
         google.script.run
@@ -870,7 +935,17 @@
         evaluationProgressTimer = null;
       }
 
-      function setBusy(isBusy) {
+      function setBusy(isBusy, message) {
+        document.body.classList.toggle('busy', isBusy);
+        document.getElementById('busy-overlay').hidden = !isBusy;
+        if (message) {
+          if (isBusy) {
+            setBusyMessage(message);
+          } else {
+            setStatus(message);
+          }
+        }
+
         document.getElementById('refresh').disabled = isBusy;
         document.getElementById('create-evaluation').disabled = isBusy;
         document.getElementById('save').disabled = isBusy;
@@ -884,7 +959,16 @@
         });
       }
 
+      function setBusyMessage(message) {
+        document.getElementById('busy-message').textContent = message || 'Carregant...';
+      }
+
       function setStatus(message, type) {
+        if (document.body.classList.contains('busy')) {
+          setBusyMessage(message);
+          return;
+        }
+
         const status = document.getElementById('status');
         status.textContent = message || '';
         status.className = `status ${type || ''}`.trim();

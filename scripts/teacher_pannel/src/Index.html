@@ -129,7 +129,16 @@
       }
 
       td.checkbox-cell {
-        min-width: 64px;
+        width: 48px;
+        min-width: 48px;
+        max-width: 48px;
+        text-align: center;
+      }
+
+      th.pi-header {
+        width: 48px;
+        min-width: 48px;
+        max-width: 48px;
         text-align: center;
       }
 
@@ -163,7 +172,8 @@
         inset: 0;
         display: grid;
         place-items: center;
-        background: rgba(248, 250, 253, 0.72);
+        background: rgba(248, 250, 253, 0.78);
+        backdrop-filter: blur(1px);
         z-index: 10;
       }
 
@@ -175,8 +185,19 @@
         display: grid;
         gap: 14px;
         justify-items: center;
+        max-width: min(360px, calc(100vw - 48px));
+        padding: 28px 32px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.92);
+        box-shadow: 0 12px 34px rgba(32, 33, 36, 0.18);
         color: #202124;
         font-weight: 700;
+        text-align: center;
+      }
+
+      .loader-message {
+        min-height: 20px;
+        line-height: 1.4;
       }
 
       .spinner {
@@ -197,6 +218,9 @@
       body.busy main,
       body.busy .save-bubble {
         filter: grayscale(0.35);
+        opacity: 0.38;
+        pointer-events: none;
+        user-select: none;
       }
 
       @media (max-width: 760px) {
@@ -206,10 +230,10 @@
       }
     </style>
   </head>
-  <body>
+  <body class="busy">
     <main>
       <h1>Avaluació</h1>
-      <div id="status" class="status">Carregant dades...</div>
+      <div id="status" class="status"></div>
 
       <section id="toolbar" class="toolbar" hidden>
         <label id="evaluation-label" for="evaluation-selector">
@@ -241,10 +265,10 @@
 
     <button id="save-button" class="save-bubble" type="button" aria-label="Desar canvis" title="Desar canvis" disabled>💾</button>
 
-    <div id="overlay" class="overlay" hidden>
-      <div class="loader">
+    <div id="overlay" class="overlay">
+      <div class="loader" role="status" aria-live="polite" aria-busy="true">
         <div class="spinner" aria-hidden="true"></div>
-        <div>Desant...</div>
+        <div id="overlay-message" class="loader-message">Carregant dades...</div>
       </div>
     </div>
 
@@ -360,7 +384,7 @@
         }
 
         uniqueSorted(state.evaluationData.rows
-          .filter(row => row.groupName === groupName)
+          .filter(row => rowIncludesGroup(row, groupName))
           .map(row => row.subjectFullName))
           .forEach(subject => selector.appendChild(createOption(subject, subject)));
 
@@ -385,11 +409,11 @@
 
         const conceptColumns = state.evaluationData.conceptColumns || [];
         const rows = state.evaluationData.rows
-          .filter(row => row.groupName === groupName && row.subjectFullName === subjectName)
+          .filter(row => rowIncludesGroup(row, groupName) && row.subjectFullName === subjectName)
           .slice()
           .sort((a, b) => a.studentFullName.localeCompare(b.studentFullName, 'ca', { sensitivity: 'base' }));
 
-        tableTitle.textContent = `${groupName} - ${subjectName}`;
+        tableTitle.textContent = `${getCommonGroupLabel(rows, groupName)} - ${subjectName}`;
         tableHead.appendChild(renderHeaderRow(conceptColumns));
         rows.forEach(row => tableBody.appendChild(renderDataRow(row, conceptColumns)));
         tableWrap.hidden = false;
@@ -400,9 +424,12 @@
         const tr = document.createElement('tr');
         ['Alumne', 'PI', 'Avaluació de la matèria']
           .concat(conceptColumns.map(concept => concept.header))
-          .forEach(header => {
+          .forEach((header, index) => {
             const th = document.createElement('th');
             th.textContent = header;
+            if (index === 1) {
+              th.className = 'pi-header';
+            }
             tr.appendChild(th);
           });
         return tr;
@@ -559,6 +586,13 @@
       function setBusy(isBusy, message) {
         document.body.classList.toggle('busy', isBusy);
         document.getElementById('overlay').hidden = !isBusy;
+        if (message) {
+          if (isBusy) {
+            setOverlayMessage(message);
+          } else {
+            setStatus(message);
+          }
+        }
         Array.from(document.querySelectorAll('select, input, button')).forEach(element => {
           if (element.id === 'save-button') {
             element.disabled = isBusy || !state.dirtyRows.size;
@@ -566,10 +600,18 @@
             element.disabled = isBusy || element.dataset.locked === 'true';
           }
         });
-        if (message) setStatus(message);
+      }
+
+      function setOverlayMessage(message) {
+        document.getElementById('overlay-message').textContent = message || 'Carregant...';
       }
 
       function setStatus(message, type) {
+        if (document.body.classList.contains('busy')) {
+          setOverlayMessage(message);
+          return;
+        }
+
         const status = document.getElementById('status');
         status.textContent = message || '';
         status.className = `status ${type || ''}`.trim();
@@ -584,6 +626,38 @@
         option.value = value;
         option.textContent = label;
         return option;
+      }
+
+      function rowIncludesGroup(row, groupName) {
+        return Array.isArray(row.groupNames) && row.groupNames.includes(groupName);
+      }
+
+      function getCommonGroupLabel(rows, fallbackGroupName) {
+        const groupNames = uniqueSorted(rows.reduce((names, row) => {
+          if (Array.isArray(row.groupNames)) {
+            return names.concat(row.groupNames);
+          }
+          return names;
+        }, []));
+
+        if (!groupNames.length) return fallbackGroupName;
+        if (groupNames.length === 1) return groupNames[0];
+
+        let prefix = groupNames[0];
+        groupNames.slice(1).forEach(groupName => {
+          let index = 0;
+          while (
+            index < prefix.length &&
+            index < groupName.length &&
+            prefix.charAt(index).toLocaleLowerCase() === groupName.charAt(index).toLocaleLowerCase()
+          ) {
+            index += 1;
+          }
+          prefix = prefix.slice(0, index);
+        });
+
+        const cleanedPrefix = prefix.replace(/[\s,;-]+$/g, '').trim();
+        return cleanedPrefix || fallbackGroupName;
       }
 
       function uniqueSorted(values) {

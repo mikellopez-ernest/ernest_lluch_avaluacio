@@ -8,6 +8,7 @@ This repository contains Google Apps Script projects organized by script.
 .
 ├── docs/
 │   ├── README.md
+│   ├── configuration-endpoint-spec.md
 │   ├── database-spec.md
 │   ├── dinantia-api-spec.md
 │   └── teacher-pannel-spec.md

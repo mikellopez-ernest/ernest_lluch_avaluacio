@@ -2,7 +2,7 @@
 
 This document defines the Dinantia API integration rules for this project.
 
-The complete local API notes are summarized from the Dinantia documentation provided to the project. This spec focuses on the parts needed for future attendance and timetable-related workflows.
+The complete local API notes are summarized from the Dinantia documentation provided to the project. This spec focuses on the parts used by evaluation generation and the API contracts needed for attendance/timetable work.
 
 ## Authentication
 
@@ -87,9 +87,10 @@ Relevant roles:
 Administrator, Staff, Student, Parent, Candidate, CandidateParent
 ```
 
-Future attendance workflows will need student `account_id` values for attendees.
+Attendance workflows need student `account_id` values for attendees.
 
-By now, local teacher records do not need to map to Dinantia `account_id`, but that may change if we create Dinantia classes or attendance records tied to teacher accounts.
+Current evaluation generation does not need local teachers to map to Dinantia
+teacher `account_id` values.
 
 ### Student Group Membership
 
@@ -116,7 +117,9 @@ Rules:
 6. Use the account `id` as the stable student identifier.
 7. Use the account `name` as `student_full_name` for evaluation sheets.
 
-The extractor should recurse through `account.groups` so it also supports future group buckets beyond `member`, but string values in `groups.member` are the confirmed source needed today.
+The extractor should recurse through `account.groups` so it supports group
+buckets beyond `member`, but string values in `groups.member` are the confirmed
+source needed today.
 
 ## Groups
 
@@ -149,7 +152,8 @@ Important detail: Dinantia group IDs can be human-readable strings, for example 
 
 For compatibility, local code may resolve a selected/cache group value through group `id`, `name`, or `tag`, but student membership matching must ultimately use the group ID string found in `account.groups.member`.
 
-For future attendance write operations, confirm whether the `groups` payload expects these IDs directly or a nested/group-specific structure.
+Before implementing attendance writes, confirm whether the `groups` payload
+expects these IDs directly or a nested/group-specific structure.
 
 ## Classes
 
@@ -188,7 +192,7 @@ Regular class creation/update requires:
 | `groups` | Required unless the class is a substitution slot. |
 | `available_for_substitutions` | Marks substitution/free slots. |
 
-Future timetable syncing needs mappings for:
+Timetable/class syncing requires mappings for:
 
 | Local value | Dinantia value needed |
 | --- | --- |
@@ -216,7 +220,8 @@ id, name, created
 
 Deleting a course requires `replacement_id` to replace references in existing attendances.
 
-Future attendance workflows need a reliable mapping from local subject data to Dinantia `course_id` or accepted `course` value.
+Attendance/class workflows need a reliable mapping from local subject data to
+Dinantia `course_id` or accepted `course` value.
 
 ## School Hours
 
@@ -234,7 +239,8 @@ id, name, start, end
 
 `start` and `end` use `HH:mm:ss`.
 
-Future timetable/class workflows need a mapping from `GPU001.schedule_hour` values `1` through `12` to Dinantia `school_hour_id`.
+Timetable/class workflows need a mapping from `GPU001.schedule_hour` values `1`
+through `12` to Dinantia `school_hour_id`.
 
 ## Attendances
 
@@ -285,13 +291,14 @@ The current local cache `Grades` -> `subjects_cache` provides:
 | `teacher_email` | Local teacher email from `Dades de professors` -> `Llista.CORREU INSTIT`. |
 | `mat_reduit` | Local subject code from `GPU001`. |
 | `subject_full_name` | Local subject display name. |
-| `subject_dinantia_group_av` | Dinantia group ID selected for assessment. |
+| `subject_dinantia_group_av` | Dinantia group ID selected for assessment. Rebuild fallback may be a comma-separated list of display names. |
 
-The configuration endpoint lists and saves `subject_dinantia_group_av` as the
-Dinantia group `id`, because student membership values in account data are also
-group IDs. Existing fallback values may still be names or tags, so generation
-code resolves them against group `id`, `name`, and `tag` before matching
-students.
+The configuration endpoint lists and saves Dinantia group IDs for
+`subject_dinantia_group_av`, using `group.id` from `/v1/groups/index`. Student
+membership values in account data are also group IDs. Existing fallback values
+may still be names, tags, or comma-separated lists, so generation code splits by
+comma and resolves each part against group `id`, `name`, and `tag` before
+matching students.
 
 For evaluation-sheet generation, student account membership is read from `accounts.groups.member`, which contains Dinantia group IDs as strings. The implementation should fetch all accounts once, filter students, index them by membership group, and then expand `subjects_cache` rows from that in-memory index.
 
@@ -299,9 +306,9 @@ When selecting local groups to include in an evaluation, use individual group
 codes from `subjects_cache.group`. If a row contains `1F,2F`, it belongs to both
 selected groups after splitting by comma.
 
-This cache is useful for display and local configuration, but it is not yet sufficient for Dinantia attendance writes.
-
-Before creating attendance records, future development must define or build mappings for:
+This cache is useful for display and local configuration, but it is not
+sufficient by itself for Dinantia attendance writes. Before creating attendance
+records, the project must define or build mappings for:
 
 | Required API value | Needed source/mapping |
 | --- | --- |

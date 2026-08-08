@@ -80,7 +80,8 @@ function getTeacherEvaluationData(payload) {
   return {
     evaluation,
     userEmail: getActiveUserEmail_(),
-    groups: uniqueSorted_(teacherRows.map(row => row.groupName)),
+    groups: uniqueSorted_(teacherRows.reduce((groups, row) =>
+      groups.concat(row.groupNames || []), [])),
     rows: teacherRows,
     subjectEvaluationOptions: config.subjectEvaluationOptions,
     conceptColumns: mergeConceptColumns_(table.conceptColumns, config.conceptColumns),
@@ -136,7 +137,7 @@ function saveTeacherEvaluationRows(payload) {
       });
     });
 
-    const firstWritableColumn = 6;
+    const firstWritableColumn = getFirstWritableColumn_(headers);
     const lastWritableColumn = getLastWritableColumn_(headers);
     const writableWidth = lastWritableColumn - firstWritableColumn + 1;
     const bodyRowCount = table.values.length - 1;
@@ -227,6 +228,7 @@ function readEvaluationTable_(sheet) {
     .map((row, index) => ({
       sheetRow: index + 2,
       groupName: String(row[headerIndexes.groupName] || '').trim(),
+      groupNames: splitCommaValues_(row[headerIndexes.groupName]),
       teacherEmail: String(row[headerIndexes.teacherEmail] || '').trim(),
       subjectFullName: String(row[headerIndexes.subjectFullName] || '').trim(),
       studentFullName: String(row[headerIndexes.studentFullName] || '').trim(),
@@ -237,7 +239,7 @@ function readEvaluationTable_(sheet) {
         return result;
       }, {})
     }))
-    .filter(row => row.groupName && row.subjectFullName && row.studentFullName);
+    .filter(row => row.groupNames.length && row.subjectFullName && row.studentFullName);
 
   return {
     values,
@@ -279,10 +281,14 @@ function readEvaluationConfig_(gradesSpreadsheet, evaluationSheetName) {
 }
 
 function getConceptColumnsFromHeaders_(headers) {
+  const indexes = buildHeaderIndexMap_(headers);
+  const subjectEvaluationIndex = indexes.get(normalizeHeader_(SUBJECT_EVALUATION_HEADER));
+  const firstConceptIndex = subjectEvaluationIndex === undefined ? 7 : subjectEvaluationIndex + 1;
+
   return headers
     .map((header, index) => ({ header, index }))
     .filter(column =>
-      column.index >= 7 &&
+      column.index >= firstConceptIndex &&
       column.header &&
       normalizeHeader_(column.header) !== normalizeHeader_(STUDENT_ACCOUNT_ID_HEADER)
     );
@@ -317,8 +323,24 @@ function getWritableColumnIndexes_(headers) {
   };
 }
 
+function getFirstWritableColumn_(headers) {
+  const indexes = getWritableColumnIndexes_(headers);
+  const writableIndexes = [indexes.pi, indexes.subjectEvaluation]
+    .concat(indexes.concepts.map(column => column.index))
+    .filter(index => index !== undefined);
+
+  return Math.min.apply(null, writableIndexes) + 1;
+}
+
 function getLastWritableColumn_(headers) {
-  const writableIndexes = [5, 6].concat(getConceptColumnsFromHeaders_(headers).map(column => column.index));
+  const indexes = buildHeaderIndexMap_(headers);
+  const writableIndexes = [
+    indexes.get(normalizeHeader_('PI')),
+    indexes.get(normalizeHeader_(SUBJECT_EVALUATION_HEADER))
+  ]
+    .concat(getConceptColumnsFromHeaders_(headers).map(column => column.index))
+    .filter(index => index !== undefined);
+
   return Math.max.apply(null, writableIndexes) + 1;
 }
 
@@ -392,6 +414,13 @@ function getField_(row, ...headers) {
 function uniqueSorted_(values) {
   return Array.from(new Set(values.map(value => String(value || '').trim()).filter(Boolean)))
     .sort(compareText_);
+}
+
+function splitCommaValues_(value) {
+  return String(value || '')
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean);
 }
 
 function compareText_(a, b) {

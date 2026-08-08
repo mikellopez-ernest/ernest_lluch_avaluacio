@@ -46,7 +46,7 @@ const tablesSheet = registrySpreadsheet.getSheetByName('tables');
 | `Càrrega lectiva` | `assignatures` |
 | `Horaris` | `GPU001` |
 | `Dinantia` | `dinantia_2_dades_alumnes` |
-| `Grades` | `subjects_cache`, `avaluacions` |
+| `Grades` | `subjects_cache`, `avaluacions`, generated evaluation sheets, generated evaluation config sheets |
 
 The old `Grades` -> `subjects` table is obsolete and must not be used for the new configuration workflow.
 
@@ -485,195 +485,24 @@ subjects_cache.subject_dinantia_group_av = Dinantia group id selected in the end
 
 When `subjects_cache` is rebuilt from `GPU001`, this field may initially be filled with `group_name` as a fallback. Manual endpoint edits should replace it with a Dinantia group ID.
 
-For compatibility, any process that consumes `subject_dinantia_group_av` must resolve the value against Dinantia group `id`, `name`, and `tag`. The resolved group ID is the value used to match students.
+For compatibility, any process that consumes `subject_dinantia_group_av` must resolve each comma-separated value against Dinantia group `id`, `name`, and `tag`. The resolved group IDs are the values used to match students.
 
 When a cache row contains multiple local groups, `group_name` and the fallback
 `subject_dinantia_group_av` may contain multiple comma-separated display names.
-Before creating evaluations, the configuration UI should be used to choose the
-specific Dinantia group ID to assess whenever the fallback is ambiguous.
+Before creating evaluations, the configuration UI may be used to choose a
+specific Dinantia group ID to assess whenever the fallback is ambiguous. If the
+fallback remains a comma-separated group list, evaluation generation must expand
+students from every resolved group in that list.
 
 If group, teacher, or subject references cannot be resolved, the cache builder should preserve the source code and leave the unresolved display value blank or fall back to the source code when a user-facing value is required.
 
-## Configuration Endpoint
+## Generated Evaluation Sheets
 
-The configuration endpoint is served by the Apps Script web app.
+Generated evaluation sheets are created by the configuration endpoint and later
+edited by the teacher panel. Their layout is part of the database contract
+because multiple scripts depend on it.
 
-Page title: `Configuració`
-
-### Public Functions
-
-Only functions with a specific external purpose should remain public.
-
-Public functions:
-
-| Function | Purpose |
-| --- | --- |
-| `doGet` | Web app entrypoint. |
-| `grantPermissionsManually` | Manual authorization helper for the script owner. |
-| `buildSubjectsCache` | Dangerous full rebuild of `Grades` -> `subjects_cache` from `Horaris` -> `GPU001`. |
-| `getConfigurationData` | Frontend data loader for the configuration endpoint. |
-| `saveSubjectsCacheEdits` | Frontend save handler for manual edits to `Grades` -> `subjects_cache`. |
-| `createEvaluation` | Frontend handler that creates an evaluation sheet, config sheet, registry row, and student-subject rows. |
-| `getEvaluationCreationStatus` | Frontend polling handler for long-running evaluation creation progress. |
-
-All other functions must be private helpers with a trailing `_`.
-
-### Endpoint UI
-
-The endpoint must show:
-
-1. A group-code dropdown selector, empty by default.
-2. The dropdown values come from individual values inside `subjects_cache.group`, splitting comma-separated multi-group rows.
-3. When a group code is selected, show every editable row whose `subjects_cache.group` contains that selected group code.
-4. One floating refresh bubble button with a refresh icon in the bottom-right corner.
-5. A warning modal before cache rebuild.
-6. Two buttons under the editable list:
-   - `+` to add a line.
-   - 3.5-inch disk icon to save.
-7. A second floating bottom-right button, left of the refresh button, with a document/check icon and accessible name `Crear avaluació`.
-8. A red delete icon on each editable cache row, shown on hover/focus.
-
-Editable row fields:
-
-| UI label | Cache column |
-| --- | --- |
-| `Assignatura` | `subject_full_name` |
-| `Professor` | `teacher_full_name` |
-| `Grup d'alumnes per avaluar` | `subject_dinantia_group_av` |
-
-Each editable field must be rendered as a dropdown selector.
-
-### Dropdown Data Sources
-
-Dropdown option lists are calculated once when loading the page.
-
-| Dropdown | Source | Sort |
-| --- | --- | --- |
-| Group selector | Unique individual group codes from `subjects_cache.group`, splitting comma-separated values. | Alphabetical. |
-| `Assignatura` | Unique `subjects_cache.subject_full_name` values. | Alphabetical. |
-| `Professor` | Unique `subjects_cache.teacher_full_name` values. | Alphabetical. |
-| `Grup d'alumnes per avaluar` | Dinantia API group IDs from `GET /v1/groups/index`. | Alphabetical. |
-
-The `Grup d'alumnes per avaluar` dropdown displays and saves the Dinantia group ID. This ID may be a readable string such as `1r ESO A`.
-
-### Save Behavior
-
-Manual edits are saved directly to `Grades` -> `subjects_cache`.
-
-The page must track which rows have been edited.
-
-Saving should send only edited rows and new rows to the server.
-
-The server should update only the submitted existing row IDs and append submitted new rows while preserving all other rows.
-
-For existing rows, saving must preserve the row's original `subjects_cache.group`
-and `group_name` unless the backend intentionally recalculates the group name
-from the selected group code. For new rows, the selected group code becomes
-`subjects_cache.group` and `group_name` is resolved from
-`Dinantia.dinantia_2_dades_alumnes`.
-
-New rows added with `+` are written to `subjects_cache` and assigned new `id` values during save.
-
-Rows deleted with the red delete icon are removed from `subjects_cache` on save.
-
-While save is running, the page must be disabled so the user cannot change selectors, add rows, save again, or rebuild the cache.
-
-After save, the cache sheet should remain sorted by `group_name`.
-
-### Rebuild Warning
-
-The floating refresh button must show this warning in Catalan before running `buildSubjectsCache`:
-
-```text
-Reconstruir la cache?
-
-Aquesta acció esborrarà totes les dades actuals de la cache i les substituirà amb les dades generades a partir de l'horari GPU001.
-
-Qualsevol canvi manual fet en aquesta pantalla es pot perdre.
-
-Vols continuar?
-```
-
-Buttons:
-
-```text
-Cancel·lar
-Continuar i reconstruir
-```
-
-`buildSubjectsCache` is dangerous because it fully rewrites `subjects_cache` from `GPU001` and can overwrite manual edits.
-
-### Create Evaluation UI
-
-The `Crear avaluació` floating button opens a modal.
-
-Modal content:
-
-| Element | Text / Behavior |
-| --- | --- |
-| `H1` | `Crear una avaluació` |
-| Text input label | `Nom de l'avaluació` |
-| Text input placeholder | `p.e. 1a avaluació` |
-| `H2` | `Grups a avaluar` |
-| Group checkbox list | One checkbox per available individual group code from `subjects_cache.group`; checked group codes are included in the generated sheet. |
-| `H2` | `Avaluació de les matèries` |
-| Subtitle | `Introdueix els valors que podran triar els professors per avaluar cada matèria.` |
-| Dynamic inputs | One text input per subject-evaluation value, with `+` to add more. |
-| `H2` | `Altres conceptes a avaluar` |
-| Subtitle | `A continuació afegeix altres conceptes que vulguis avaluar. Els conceptes poden avaluar-se amb un text obert o amb un desplegable de diferents opcions.` |
-| Dynamic concept inputs | One text input per concept name, with `+` to add concepts. |
-| Concept option inputs | Under each concept, indented right, one text input per option, with `+` to add more options. |
-
-If a concept has no options, that concept is evaluated with open text.
-
-The modal must include delete controls:
-
-| Item | Delete behavior |
-| --- | --- |
-| Subject-evaluation value | Red cross button removes that value input. |
-| Extra concept | Red cross button removes the concept and its options. |
-| Concept option | Red cross button removes that option input. |
-
-There must not be a `+` button beside the evaluation-name input. The only add buttons are:
-
-1. Add subject-evaluation value.
-2. Add extra concept.
-3. Add option inside each extra concept.
-
-When creation starts, the modal closes and the page shows a short message in Catalan explaining that the process has started and may take a few minutes.
-
-While evaluation creation is running, the frontend must poll `getEvaluationCreationStatus(runId)` and show the latest stage message in the page status area.
-
-### Create Evaluation Behavior
-
-When the user confirms the create-evaluation modal:
-
-1. Normalize `Nom de l'avaluació` to snake_case without accents.
-2. Read selected groups from `Grups a avaluar`.
-3. Create a blank main evaluation sheet in the `Grades` spreadsheet using the normalized name.
-4. Create a config sheet named `{evaluation_sheet_name}_config`.
-5. Register the new evaluation in `Grades` -> `avaluacions` with `Estat = Creada`.
-6. Fill the config sheet.
-7. Fill the main evaluation sheet from `Grades` -> `subjects_cache` expanded by Dinantia students, using only selected groups.
-
-If either target sheet already exists, the script must fail with a clear error and avoid overwriting existing data.
-
-The process can be long. It must use bulk reads/writes where possible and should log major stages with a per-run identifier:
-
-| Stage | Log purpose |
-| --- | --- |
-| start | Evaluation name, subject-value count, concept count. |
-| lock | Waiting for and acquiring the script lock. |
-| normalized names | Main and config sheet names. |
-| inserting sheets | New sheet creation started. |
-| registering evaluation | `avaluacions` append started. |
-| writing config | Config sheet write started. |
-| populating main sheet | Student expansion started. |
-| student index | Number of accounts read, groups matched, and student rows indexed. |
-| completion | Rows written to the main evaluation sheet. |
-| release | Lock released. |
-
-#### Evaluation Registry Row
+### Evaluation Registry Row
 
 Append one row to `Grades` -> `avaluacions`:
 
@@ -684,7 +513,7 @@ Append one row to `Grades` -> `avaluacions`:
 | `sheet_name` | Normalized main evaluation sheet name. |
 | `Estat` | `Creada`, with validation applied to the cell. |
 
-#### Config Sheet Layout
+### Config Sheet Layout
 
 Config sheet name:
 
@@ -698,7 +527,7 @@ Config sheet name:
 | B | `Avaluació de les matèries` | Row 2 onward contains the subject-evaluation values. |
 | C onward | Concept name | Row 2 onward contains allowed option values. Blank/no values means open text. |
 
-#### Main Evaluation Sheet Layout
+### Main Evaluation Sheet Layout
 
 The main evaluation sheet is generated from `Grades` -> `subjects_cache`.
 
@@ -706,25 +535,39 @@ For each `subjects_cache` row:
 
 1. Skip the row if `subjects_cache.group` does not contain one of the selected group codes.
 2. Read `subject_dinantia_group_av`.
-3. Resolve it against Dinantia groups by `id`, `name`, or `tag`.
-4. Prefer storing and using the resolved Dinantia group ID.
-5. Use an in-memory student index built from Dinantia accounts.
-6. Match the resolved Dinantia group ID against each student account's `groups.member` values.
-7. Create one main-sheet row per matched student.
+3. Split it by comma.
+4. Resolve each value against Dinantia groups by `id`, `name`, or `tag`.
+5. Prefer storing and using resolved Dinantia group IDs.
+6. Use an in-memory student index built from Dinantia accounts.
+7. Match the resolved Dinantia group IDs against each student account's `groups.member` values.
+8. Dedupe students per cache row by Dinantia account ID.
+9. Create one main-sheet row per matched student.
 
 Main sheet columns:
 
 | Column | Header | Source / Behavior |
 | --- | --- | --- |
-| A | `group_name` | `subjects_cache.group_name`. |
-| B | `teacher_full_name` | `subjects_cache.teacher_full_name`. |
-| C | `teacher_email` | `subjects_cache.teacher_email`. |
-| D | `subject_full_name` | `subjects_cache.subject_full_name`. |
-| E | `student_full_name` | Full student name from Dinantia. |
-| F | `PI` | Boolean checkbox column. Always created. Default value `false`. |
-| G | `Avaluació de la matèria` | User-editable dropdown using config column B values. |
-| H onward | Extra concept name | One column per extra concept from the config sheet. Dropdown validation when the concept has options; open text when it has none. |
-| Last hidden column | `student_account_id` | Dinantia student account ID. Hidden from normal users and reserved for future sync workflows. |
+| A | `group` | Exact `subjects_cache.group` value. This may be a comma-separated array such as `1F,2F`. |
+| B | `group_name` | `subjects_cache.group_name`. |
+| C | `teacher_full_name` | `subjects_cache.teacher_full_name`. |
+| D | `teacher_email` | `subjects_cache.teacher_email`. |
+| E | `subject_full_name` | `subjects_cache.subject_full_name`. |
+| F | `student_full_name` | Full student name from Dinantia. |
+| G | `PI` | Boolean checkbox column. Always created. Default value `false`. |
+| H | `Avaluació de la matèria` | User-editable dropdown using config column B values. |
+| I onward | Extra concept name | One column per extra concept from the config sheet. Dropdown validation when the concept has options; open text when it has none. |
+| Last hidden column | `student_account_id` | Dinantia student account ID. Hidden from normal users and reserved for sync workflows. |
+
+`group` is the canonical local group-code membership for the generated
+evaluation row. When a source cache row belongs to multiple local groups, write
+the full comma-separated array to the evaluation sheet. Consumers that need
+local group codes must split this column by comma.
+
+`group_name` is the corresponding display membership. When `group` contains
+multiple local group codes, `group_name` should contain the matching display
+group names joined with comma-space. Teacher-facing readers use `group_name`,
+not `group`, to build visible group selectors; they split `group_name` by comma
+so one generated grade can be reached from any included display group.
 
 The main sheet must be written in bulk, not row by row.
 
@@ -737,6 +580,9 @@ The main evaluation sheet must be formatted after writing:
 5. Auto-resize columns.
 6. Apply checkbox validation to `PI`.
 7. Hide `student_account_id`.
+
+Teacher-facing UIs should render `PI` as a fixed narrow checkbox column rather
+than an adaptive text column.
 
 The config sheet must also freeze and format its header row.
 
@@ -754,6 +600,9 @@ Student index flow:
 Do not call Dinantia once per `subjects_cache` row. Do not depend on `groups/view/:id` containing member lists.
 
 ## Implementation Requirements
+
+Detailed configuration endpoint behavior is specified in
+[Configuration Endpoint Specification](configuration-endpoint-spec.md).
 
 ### Header Handling
 
