@@ -32,6 +32,12 @@ once by its original spreadsheet row number.
 
 The `PI` column is fixed narrow in the UI, and blocking operations use a faded
 full-page loading overlay with the current status text under the spinner.
+Generated `grup_tutoria` values are metadata and are not edited by this panel.
+The config sheet `Color` column is read as subject-evaluation metadata and is
+not treated as a custom concept column. Old config sheets without `Color` are
+still supported; in that case concept columns start at C instead of D.
+The selected `Avaluació de la matèria` value colors that dropdown using the
+matching color from the config sheet, with `#FFFFFF` as fallback.
 
 ## Behavior
 

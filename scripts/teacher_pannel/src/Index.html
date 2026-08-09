@@ -146,6 +146,10 @@
         background: #fff6c7;
       }
 
+      select.subject-evaluation-select {
+        background: var(--evaluation-color, #fff);
+      }
+
       .save-bubble {
         position: fixed;
         right: 24px;
@@ -458,11 +462,17 @@
         tr.appendChild(piCell);
 
         const subjectCell = document.createElement('td');
-        subjectCell.appendChild(createSelectInput(
+        const subjectEvaluationSelect = createSelectInput(
           'subjectEvaluation',
           state.evaluationData.subjectEvaluationOptions || [],
           row.subjectEvaluation
-        ));
+        );
+        subjectEvaluationSelect.classList.add('subject-evaluation-select');
+        applyEvaluationColor(subjectEvaluationSelect, row.subjectEvaluation);
+        subjectEvaluationSelect.addEventListener('change', event => {
+          applyEvaluationColor(event.target, event.target.value);
+        });
+        subjectCell.appendChild(subjectEvaluationSelect);
         tr.appendChild(subjectCell);
 
         conceptColumns.forEach(concept => {
@@ -630,6 +640,19 @@
 
       function rowIncludesGroup(row, groupName) {
         return Array.isArray(row.groupNames) && row.groupNames.includes(groupName);
+      }
+
+      function applyEvaluationColor(element, evaluationValue) {
+        if (!element) return;
+
+        const colors = state.evaluationData && state.evaluationData.subjectEvaluationColors || {};
+        const color = normalizeHexColor(colors[evaluationValue] || '#FFFFFF');
+        element.style.setProperty('--evaluation-color', color);
+      }
+
+      function normalizeHexColor(value) {
+        const color = String(value || '').trim();
+        return /^#[0-9a-fA-F]{6}$/.test(color) ? color.toUpperCase() : '#FFFFFF';
       }
 
       function getCommonGroupLabel(rows, fallbackGroupName) {

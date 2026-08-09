@@ -92,6 +92,7 @@ Generated evaluation sheets contain:
 | `teacher_email` | Teacher email. |
 | `subject_full_name` | Subject name. |
 | `student_full_name` | Student name. |
+| `grup_tutoria` | Tutorial group display value for the student. |
 | `PI` | Editable checkbox column. |
 | `Avaluació de la matèria` | Editable subject evaluation dropdown. |
 | custom concept columns | Editable configured concepts. |
@@ -130,14 +131,40 @@ The endpoint reads `{sheet_name}_config` for dropdown values.
 | Column | Purpose |
 | --- | --- |
 | B | Values for `Avaluació de la matèria`. |
-| C onward | Concept names and optional dropdown values. |
+| C | Optional `Color` column with hex colors for the subject-evaluation values in column B. |
+| D onward | Concept names and optional dropdown values. |
+
+New config sheets have `Color` as the header in column C. Old config sheets may
+not. The backend must inspect the column C header:
+
+- If column C is `Color`, read subject-evaluation colors from C and treat
+  concept columns as starting at D.
+- If column C is not `Color`, treat the sheet as the old layout and concept
+  columns as starting at C.
+
+Color values are six-digit hex strings, for example `#FFFFFF` or `#2F80ED`.
+The default color is `#FFFFFF`.
 
 For custom concept columns:
 
 - Show all remaining main-sheet headers after `Avaluació de la matèria` exactly as they appear.
 - Exclude `student_account_id`.
+- Ignore the config `Color` column when resolving custom concept options.
 - If the matching config column has values, render a dropdown.
 - If the matching config column has no values, render an open text field.
+
+The backend must expose the subject-evaluation color map with the evaluation
+data as `subjectEvaluationColors`. Example:
+
+```json
+{
+  "No assolit": "#FFFFFF",
+  "Assoliment satisfactori": "#A7F3D0"
+}
+```
+
+Options without a valid configured color may be omitted from the map or treated
+as `#FFFFFF` by the consumer.
 
 ## UI Flow
 
@@ -175,9 +202,20 @@ Table columns:
 | `Avaluació de la matèria` | `Avaluació de la matèria` |
 | remaining concept headers | matching concept columns |
 
+The `grup_tutoria` column is metadata and is not editable in the teacher panel.
+
 The `PI` column is mandatory and must be fixed-width. It should be narrow enough to contain only the `PI` header and one checkbox per data row. It must not auto-expand like normal table columns.
 
 Any edited row is highlighted yellow.
+
+When a teacher selects a value in `Avaluació de la matèria`, that dropdown's
+background must change to the color configured for that value in
+`subjectEvaluationColors`. If the value has no configured valid color, use
+`#FFFFFF`. Existing loaded values should be colored when the table first
+renders.
+
+Dirty-row highlighting remains a row-level yellow highlight and is independent
+from the dropdown color.
 
 ## Busy State
 
@@ -214,7 +252,7 @@ Writable fields:
 | `Avaluació de la matèria` | String selected from config values. |
 | custom concept columns | String from dropdown or open text input. |
 
-Non-writable fields such as group, teacher, subject, student name, and `student_account_id` must not be changed by this endpoint.
+Non-writable fields such as group, `grup_tutoria`, teacher, subject, student name, and `student_account_id` must not be changed by this endpoint.
 
 The backend must calculate writable column positions from headers, not from fixed column letters. This keeps saves correct when generated sheets include optional metadata columns such as `group`.
 

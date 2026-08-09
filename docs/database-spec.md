@@ -525,7 +525,22 @@ Config sheet name:
 | --- | --- | --- |
 | A | `data de creació` | Row 2 contains creation datetime formatted as `yyyymmdd:HHmm`. |
 | B | `Avaluació de les matèries` | Row 2 onward contains the subject-evaluation values. |
-| C onward | Concept name | Row 2 onward contains allowed option values. Blank/no values means open text. |
+| C | `Color` | Row 2 onward contains the hex color for the subject-evaluation value in column B. |
+| D onward | Concept name | Row 2 onward contains allowed option values. Blank/no values means open text. |
+
+`Color` values must be six-digit hex colors, such as `#FFFFFF` or `#2F80ED`.
+If no color is selected for a subject-evaluation value, write `#FFFFFF`.
+
+Old config sheets may not have a `Color` column. Consumers must inspect the
+header in column C:
+
+- If column C is `Color`, subject-evaluation colors are read from column C and
+  concept columns start at D.
+- If column C is not `Color`, treat the sheet as the old layout and concept
+  columns start at C.
+
+The `Color` column is metadata for `Avaluació de la matèria`; it is not a
+custom concept.
 
 ### Main Evaluation Sheet Layout
 
@@ -553,10 +568,22 @@ Main sheet columns:
 | D | `teacher_email` | `subjects_cache.teacher_email`. |
 | E | `subject_full_name` | `subjects_cache.subject_full_name`. |
 | F | `student_full_name` | Full student name from Dinantia. |
-| G | `PI` | Boolean checkbox column. Always created. Default value `false`. |
-| H | `Avaluació de la matèria` | User-editable dropdown using config column B values. |
-| I onward | Extra concept name | One column per extra concept from the config sheet. Dropdown validation when the concept has options; open text when it has none. |
+| G | `grup_tutoria` | Tutorial group display value for the student. Derived after row generation. |
+| H | `PI` | Boolean checkbox column. Always created. Default value `false`. |
+| I | `Avaluació de la matèria` | User-editable dropdown using config column B values. Colors for these values are stored in config column C. |
+| J onward | Extra concept name | One column per extra concept from the config sheet. Dropdown validation when the concept has options; open text when it has none. |
 | Last hidden column | `student_account_id` | Dinantia student account ID. Hidden from normal users and reserved for sync workflows. |
+
+Teacher-facing UIs may use config column C colors to color the generated sheet
+row according to the selected `Avaluació de la matèria` value. Missing or
+invalid colors fall back to `#FFFFFF`.
+
+`grup_tutoria` is filled after all generated rows exist. For each student,
+generation finds that student's row whose `subject_full_name` normalizes to
+`TUTORIA`, reads that row's `group_name` value from column B, and writes that
+value to `grup_tutoria` on every generated row for the same
+`student_account_id`. If no `TUTORIA` row exists for the student,
+`grup_tutoria` remains blank.
 
 `group` is the canonical local group-code membership for the generated
 evaluation row. When a source cache row belongs to multiple local groups, write

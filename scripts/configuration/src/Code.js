@@ -167,7 +167,8 @@ function createEvaluation(payload) {
   const runId = String(payload && payload.runId || Utilities.getUuid()).trim();
   const evaluationName = String(payload && payload.evaluationName || '').trim();
   const selectedGroups = sanitizeOrderedList_(payload && payload.selectedGroups);
-  const subjectValues = sanitizeOrderedList_(payload && payload.subjectValues);
+  const subjectItems = sanitizeSubjectEvaluationItems_(payload && payload.subjectValues);
+  const subjectValues = subjectItems.map(item => item.value);
   const concepts = sanitizeConcepts_(payload && payload.concepts);
   const logPrefix = `createEvaluation:${runId}`;
   const lock = LockService.getScriptLock();
@@ -235,7 +236,7 @@ function createEvaluation(payload) {
     registerEvaluation_(gradesSpreadsheet, evaluationName, sheetName);
     Logger.log('%s writing config', logPrefix);
     updateEvaluationProgress_(runId, 'running', 'Escrivint la configuració...', { stage: 'writing_config' });
-    writeEvaluationConfig_(configSheet, subjectValues, concepts);
+    writeEvaluationConfig_(configSheet, subjectItems, concepts);
     Logger.log('%s populating main sheet', logPrefix);
     updateEvaluationProgress_(runId, 'running', 'Llegint alumnes de Dinantia i generant files...', { stage: 'populating_main' });
     const rowsWritten = populateEvaluationSheet_(mainSheet, subjectValues, concepts, logPrefix, runId, selectedGroups);
@@ -490,14 +491,14 @@ function applyEvaluationStatusValidation_(sheet, rowNumber) {
   sheet.getRange(rowNumber, 4).setDataValidation(rule);
 }
 
-function writeEvaluationConfig_(sheet, subjectValues, concepts) {
+function writeEvaluationConfig_(sheet, subjectItems, concepts) {
   const creationDate = Utilities.formatDate(new Date(), 'Europe/Madrid', 'yyyyMMdd:HHmm');
-  const headers = ['data de creació', 'Avaluació de les matèries'].concat(
+  const headers = ['data de creació', 'Avaluació de les matèries', 'Color'].concat(
     concepts.map(concept => concept.name)
   );
   const maxRows = Math.max(
     1,
-    subjectValues.length,
+    subjectItems.length,
     ...concepts.map(concept => concept.options.length)
   );
   const values = [headers];
@@ -505,7 +506,8 @@ function writeEvaluationConfig_(sheet, subjectValues, concepts) {
   for (let index = 0; index < maxRows; index += 1) {
     values.push([
       index === 0 ? creationDate : '',
-      subjectValues[index] || '',
+      subjectItems[index] ? subjectItems[index].value : '',
+      subjectItems[index] ? subjectItems[index].color : '',
       ...concepts.map(concept => concept.options[index] || '')
     ]);
   }
@@ -537,10 +539,11 @@ function populateEvaluationSheet_(sheet, subjectValues, concepts, logPrefix, run
     'teacher_email',
     'subject_full_name',
     'student_full_name',
+    'grup_tutoria',
     'PI',
     'Avaluació de la matèria'
   ].concat(concepts.map(concept => concept.name), ['student_account_id']);
-  const values = [headers];
+  const dataRows = [];
 
   cacheRows.forEach(cacheRow => {
     const resolvedGroupIds = resolveDinantiaGroupIds_(cacheRow.subjectDinantiaGroupAv, groupAliasMap);
@@ -549,13 +552,14 @@ function populateEvaluationSheet_(sheet, subjectValues, concepts, logPrefix, run
     ), []));
 
     students.forEach(student => {
-      values.push([
+      dataRows.push([
         cacheRow.group,
         cacheRow.groupName,
         cacheRow.teacherFullName,
         cacheRow.teacherEmail,
         cacheRow.subjectFullName,
         student.name,
+        '',
         false,
         '',
         ...concepts.map(() => ''),
@@ -563,6 +567,9 @@ function populateEvaluationSheet_(sheet, subjectValues, concepts, logPrefix, run
       ]);
     });
   });
+
+  fillTutoriaGroups_(dataRows, headers);
+  const values = [headers].concat(dataRows);
 
   Logger.log('%s populate generatedRows=%s', logPrefix, Math.max(values.length - 1, 0));
   updateEvaluationProgress_(runId, 'running', `Escrivint ${Math.max(values.length - 1, 0)} files al full...`, {
@@ -609,8 +616,9 @@ function formatEvaluationMainSheet_(sheet, columnCount, rowCount) {
   sheet.setColumnWidth(4, 220);
   sheet.setColumnWidth(5, 220);
   sheet.setColumnWidth(6, 220);
-  sheet.setColumnWidth(7, 80);
-  sheet.setColumnWidth(8, 190);
+  sheet.setColumnWidth(7, 150);
+  sheet.setColumnWidth(8, 80);
+  sheet.setColumnWidth(9, 190);
   sheet.hideColumns(columnCount);
 }
 
@@ -623,8 +631,8 @@ function applyEvaluationValidations_(sheet, dataRowCount, subjectValues, concept
     .setAllowInvalid(false)
     .build();
 
-  sheet.getRange(2, 7, dataRowCount, 1).setDataValidation(checkboxRule);
-  sheet.getRange(2, 8, dataRowCount, 1).setDataValidation(subjectRule);
+  sheet.getRange(2, 8, dataRowCount, 1).setDataValidation(checkboxRule);
+  sheet.getRange(2, 9, dataRowCount, 1).setDataValidation(subjectRule);
 
   concepts.forEach((concept, index) => {
     if (!concept.options.length) return;
@@ -634,7 +642,34 @@ function applyEvaluationValidations_(sheet, dataRowCount, subjectValues, concept
       .setAllowInvalid(false)
       .build();
 
-    sheet.getRange(2, 9 + index, dataRowCount, 1).setDataValidation(rule);
+    sheet.getRange(2, 10 + index, dataRowCount, 1).setDataValidation(rule);
+  });
+}
+
+function fillTutoriaGroups_(rows, headers) {
+  const indexes = {
+    groupName: headers.indexOf('group_name'),
+    subjectFullName: headers.indexOf('subject_full_name'),
+    studentId: headers.indexOf('student_account_id'),
+    grupTutoria: headers.indexOf('grup_tutoria')
+  };
+
+  const tutoriaByStudentId = new Map();
+
+  rows.forEach(row => {
+    const studentId = String(row[indexes.studentId] || '').trim();
+    if (!studentId || tutoriaByStudentId.has(studentId)) return;
+    if (normalizeCode_(row[indexes.subjectFullName]) !== 'TUTORIA') return;
+
+    const tutoriaGroup = String(row[indexes.groupName] || '').trim();
+    if (tutoriaGroup) {
+      tutoriaByStudentId.set(studentId, tutoriaGroup);
+    }
+  });
+
+  rows.forEach(row => {
+    const studentId = String(row[indexes.studentId] || '').trim();
+    row[indexes.grupTutoria] = tutoriaByStudentId.get(studentId) || '';
   });
 }
 
@@ -766,6 +801,31 @@ function sanitizeList_(values) {
   return Array.isArray(values)
     ? uniqueSorted_(values.map(value => String(value || '').trim()))
     : [];
+}
+
+function sanitizeSubjectEvaluationItems_(values) {
+  const items = Array.isArray(values) ? values : [];
+  const seen = new Set();
+  const sanitized = [];
+
+  items.forEach(item => {
+    const value = String(item && typeof item === 'object' ? item.value : item || '').trim();
+    const key = normalizeCode_(value);
+    if (!value || seen.has(key)) return;
+
+    seen.add(key);
+    sanitized.push({
+      value,
+      color: sanitizeHexColor_(item && typeof item === 'object' ? item.color : '')
+    });
+  });
+
+  return sanitized.sort((a, b) => a.value.localeCompare(b.value, 'ca'));
+}
+
+function sanitizeHexColor_(value) {
+  const color = String(value || '').trim();
+  return /^#[0-9a-fA-F]{6}$/.test(color) ? color.toUpperCase() : '#FFFFFF';
 }
 
 function sanitizeOrderedList_(values) {

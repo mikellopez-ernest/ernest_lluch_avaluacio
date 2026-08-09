@@ -2,6 +2,7 @@ const ALLOWED_EMAIL_DOMAIN = 'iernestlluch.cat';
 const GRADES_TABLE_NAME = 'Grades';
 const EVALUATIONS_SHEET_NAME = 'avaluacions';
 const ACTIVE_EVALUATION_STATUS = 'Avaluació professors';
+const GRUP_TUTORIA_HEADER = 'grup_tutoria';
 const STUDENT_ACCOUNT_ID_HEADER = 'student_account_id';
 const SUBJECT_EVALUATION_HEADER = 'Avaluació de la matèria';
 
@@ -72,6 +73,7 @@ function getTeacherEvaluationData(payload) {
       groups: [],
       rows: [],
       subjectEvaluationOptions: config.subjectEvaluationOptions,
+      subjectEvaluationColors: config.subjectEvaluationColors,
       conceptColumns: mergeConceptColumns_(table.conceptColumns, config.conceptColumns),
       message: 'No tens alumnes assignats en aquesta avaluació.'
     };
@@ -84,6 +86,7 @@ function getTeacherEvaluationData(payload) {
       groups.concat(row.groupNames || []), [])),
     rows: teacherRows,
     subjectEvaluationOptions: config.subjectEvaluationOptions,
+    subjectEvaluationColors: config.subjectEvaluationColors,
     conceptColumns: mergeConceptColumns_(table.conceptColumns, config.conceptColumns),
     message: ''
   };
@@ -220,6 +223,7 @@ function readEvaluationTable_(sheet) {
     teacherEmail: indexes.get(normalizeHeader_('teacher_email')),
     subjectFullName: indexes.get(normalizeHeader_('subject_full_name')),
     studentFullName: indexes.get(normalizeHeader_('student_full_name')),
+    grupTutoria: indexes.get(normalizeHeader_(GRUP_TUTORIA_HEADER)),
     pi: indexes.get(normalizeHeader_('PI')),
     subjectEvaluation: indexes.get(normalizeHeader_(SUBJECT_EVALUATION_HEADER))
   };
@@ -232,6 +236,7 @@ function readEvaluationTable_(sheet) {
       teacherEmail: String(row[headerIndexes.teacherEmail] || '').trim(),
       subjectFullName: String(row[headerIndexes.subjectFullName] || '').trim(),
       studentFullName: String(row[headerIndexes.studentFullName] || '').trim(),
+      grupTutoria: headerIndexes.grupTutoria === undefined ? '' : String(row[headerIndexes.grupTutoria] || '').trim(),
       pi: row[headerIndexes.pi] === true || String(row[headerIndexes.pi]).trim().toUpperCase() === 'TRUE',
       subjectEvaluation: String(row[headerIndexes.subjectEvaluation] || '').trim(),
       concepts: conceptColumns.reduce((result, concept) => {
@@ -257,25 +262,38 @@ function readEvaluationConfig_(gradesSpreadsheet, evaluationSheetName) {
   if (!values.length) {
     return {
       subjectEvaluationOptions: [],
+      subjectEvaluationColors: {},
       conceptColumns: []
     };
   }
 
   const headers = values[0].map(header => String(header || '').trim());
+  const hasColorColumn = normalizeHeader_(headers[2]) === normalizeHeader_('Color');
+  const firstConceptIndex = hasColorColumn ? 3 : 2;
   const subjectEvaluationOptions = uniqueSorted_(values.slice(1)
     .map(row => String(row[1] || '').trim())
     .filter(Boolean));
-  const conceptColumns = headers.slice(2)
+  const subjectEvaluationColors = values.slice(1)
+    .reduce((colors, row) => {
+      const option = String(row[1] || '').trim();
+      const color = hasColorColumn ? String(row[2] || '').trim() : '';
+      if (option && /^#[0-9a-fA-F]{6}$/.test(color)) {
+        colors[option] = color.toUpperCase();
+      }
+      return colors;
+    }, {});
+  const conceptColumns = headers.slice(firstConceptIndex)
     .map((header, offset) => ({
       header,
       options: uniqueSorted_(values.slice(1)
-        .map(row => String(row[offset + 2] || '').trim())
+        .map(row => String(row[offset + firstConceptIndex] || '').trim())
         .filter(Boolean))
     }))
     .filter(concept => concept.header);
 
   return {
     subjectEvaluationOptions,
+    subjectEvaluationColors,
     conceptColumns
   };
 }

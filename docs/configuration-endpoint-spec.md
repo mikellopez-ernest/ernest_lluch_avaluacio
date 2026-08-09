@@ -136,16 +136,31 @@ The `Crear avaluació` modal contains:
 | `H1` | `Crear una avaluació` |
 | Evaluation name | Label `Nom de l'avaluació`, placeholder `p.e. 1a avaluació`. |
 | Group list | `Grups a avaluar`; one checkbox per individual `subjects_cache.group` code, checked by default. |
-| Subject values | `Avaluació de les matèries`; dynamic list with add/delete controls. |
+| Subject values | `Avaluació de les matèries`; dynamic list with text, color picker, and delete controls. |
 | Extra concepts | `Altres conceptes a avaluar`; dynamic concepts, each with dynamic option rows. |
 
 Concept rules:
 
 1. A subject value is a dropdown option for `Avaluació de la matèria`.
-2. An extra concept with options becomes a dropdown column.
-3. An extra concept without options becomes an open-text column.
-4. There is no `+` button next to the evaluation name.
-5. Subject values, concepts, and concept options have red delete controls.
+2. Each subject value has a circular color control to its right.
+3. The color control defaults to white, `#FFFFFF`.
+4. Clicking the circle opens the browser color picker.
+5. The selected color is stored in config column C, `Color`, on the same row as the subject value.
+6. An extra concept with options becomes a dropdown column.
+7. An extra concept without options becomes an open-text column.
+8. There is no `+` button next to the evaluation name.
+9. Subject values, concepts, and concept options have red delete controls.
+
+Generated config sheets use this layout:
+
+| Column | Header | Values |
+| --- | --- | --- |
+| A | `data de creació` | Creation datetime in row 2. |
+| B | `Avaluació de les matèries` | Subject-evaluation dropdown values. |
+| C | `Color` | Six-digit hex color for the corresponding value in column B. |
+| D onward | Concept name | Optional concept dropdown values. Blank means open text. |
+
+Extra concept columns start at D because C is reserved for `Color`.
 
 ## Evaluation Creation
 
@@ -156,7 +171,7 @@ When the user confirms:
 3. Create the main sheet `{sheet_name}` in `Grades`.
 4. Create `{sheet_name}_config`.
 5. Append `Grades` -> `avaluacions` with `Estat = Creada`.
-6. Write the config sheet.
+6. Write the config sheet, including subject-evaluation colors.
 7. Populate the main sheet from `subjects_cache`.
 
 If `{sheet_name}` or `{sheet_name}_config` already exists, fail clearly and do
@@ -178,10 +193,16 @@ For each `subjects_cache` row:
 7. For the cache row, collect students from all resolved Dinantia group IDs.
 8. Dedupe students by Dinantia account ID.
 9. Write one generated sheet row per deduped student.
+10. Fill `grup_tutoria` for every generated row from the student's `TUTORIA` row.
 
 Important invariant: if a source cache row has `group = 2A,2B,2C,2D,2E`, the
 generated evaluation rows must preserve that exact group array in the generated
 sheet's `group` column.
+
+`grup_tutoria` rule: for each generated student, find the row whose
+`subject_full_name` normalizes to `TUTORIA`, copy that row's `group_name`, and
+write it into `grup_tutoria` on every row for the same `student_account_id`.
+Do not use visible row order or student name as the identity.
 
 ### Progress Logging
 

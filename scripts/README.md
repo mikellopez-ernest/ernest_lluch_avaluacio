@@ -10,3 +10,4 @@ Script-specific `.clasp.json` files stay inside their own folder so each script 
 | --- | --- |
 | `configuration` | Configuration endpoint for `subjects_cache` and evaluation creation. |
 | `teacher_pannel` | Teacher-facing endpoint for generated evaluation sheets. |
+| `av_session` | Evaluation session workflow script. |

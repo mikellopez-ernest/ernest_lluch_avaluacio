@@ -13,6 +13,14 @@ This repository contains Google Apps Script projects organized by script.
 │   ├── dinantia-api-spec.md
 │   └── teacher-pannel-spec.md
 ├── scripts/
+│   ├── av_session/
+│   │   ├── .clasp.json
+│   │   ├── .claspignore
+│   │   ├── README.md
+│   │   └── src/
+│   │       ├── Code.js
+│   │       ├── Index.html
+│   │       └── appsscript.json
 │   ├── configuration/
 │   │   ├── .clasp.json
 │   │   ├── .claspignore
@@ -37,6 +45,7 @@ This repository contains Google Apps Script projects organized by script.
 
 | Script | Apps Script ID |
 | --- | --- |
+| av_session | `1I_6-JdbYTk2leRBGJKx-eeEnKxy4EpkJVpS1nApQJRd0OdRZqDyezY8M` |
 | configuration | `1qj0U_bBSfrHpxSzXt5goCaloM_npZAZcRiw6IiGdLMI_XrrP595eiehD` |
 | teacher_pannel | `1CLBSkbrZagzWSX8VxBot_sPZaQVBnexGdocsCm-_xeMTRqoIgI_hpoby` |
 

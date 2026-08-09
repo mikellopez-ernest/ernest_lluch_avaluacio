@@ -360,6 +360,36 @@
         align-items: center;
       }
 
+      .dynamic-row.subject-value-row {
+        grid-template-columns: 1fr 36px 36px;
+      }
+
+      .color-picker {
+        width: 36px;
+        height: 36px;
+        min-height: 36px;
+        border: 1px solid var(--line);
+        border-radius: 50%;
+        padding: 0;
+        background: #fff;
+        cursor: pointer;
+        overflow: hidden;
+      }
+
+      .color-picker::-webkit-color-swatch-wrapper {
+        padding: 0;
+      }
+
+      .color-picker::-webkit-color-swatch {
+        border: 0;
+        border-radius: 50%;
+      }
+
+      .color-picker::-moz-color-swatch {
+        border: 0;
+        border-radius: 50%;
+      }
+
       .concept {
         display: grid;
         gap: 8px;
@@ -779,13 +809,21 @@
       function addSubjectValueInput(value) {
         const container = document.getElementById('subject-values');
         const row = document.createElement('div');
-        row.className = 'dynamic-row';
+        row.className = 'dynamic-row subject-value-row';
 
         const input = document.createElement('input');
         input.type = 'text';
         input.value = value || '';
+        input.dataset.role = 'subject-value';
 
-        row.append(input, createDeleteButton('Eliminar valor de matèria', () => row.remove()));
+        const colorInput = document.createElement('input');
+        colorInput.type = 'color';
+        colorInput.value = '#ffffff';
+        colorInput.className = 'color-picker';
+        colorInput.dataset.role = 'subject-color';
+        colorInput.setAttribute('aria-label', `Color per a ${value || 'valor de matèria'}`);
+
+        row.append(input, colorInput, createDeleteButton('Eliminar valor de matèria', () => row.remove()));
         container.appendChild(row);
       }
 
@@ -851,9 +889,12 @@
         const selectedGroups = Array.from(document.querySelectorAll('#evaluation-groups input[type="checkbox"]:checked'))
           .map(input => input.value)
           .filter(Boolean);
-        const subjectValues = Array.from(document.querySelectorAll('#subject-values input'))
-          .map(input => input.value.trim())
-          .filter(Boolean);
+        const subjectValues = Array.from(document.querySelectorAll('#subject-values .subject-value-row'))
+          .map(row => ({
+            value: row.querySelector('[data-role="subject-value"]').value.trim(),
+            color: row.querySelector('[data-role="subject-color"]').value
+          }))
+          .filter(item => item.value);
         const concepts = Array.from(document.querySelectorAll('#concepts .concept'))
           .map(concept => ({
             name: concept.querySelector('[data-role="concept-name"]').value.trim(),
