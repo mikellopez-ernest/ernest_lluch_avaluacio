@@ -23,30 +23,32 @@
       main {
         max-width: 1180px;
         margin: 0 auto;
-        padding: 28px 20px 96px;
+        padding: 12px 14px 76px;
       }
 
       h1 {
-        margin: 0 0 8px;
-        font-size: 28px;
+        margin: 0 0 4px;
+        font-size: 22px;
         font-weight: 700;
         letter-spacing: 0;
       }
 
       h2 {
         margin: 0;
-        font-size: 20px;
+        font-size: 16px;
         letter-spacing: 0;
       }
 
       .subtitle {
-        margin: 0 0 18px;
+        margin: 0 0 6px;
         color: #5f6368;
-        line-height: 1.45;
+        font-size: 12px;
+        line-height: 1.25;
       }
 
       .status {
-        min-height: 24px;
+        min-height: 18px;
+        font-size: 12px;
         color: #5f6368;
       }
 
@@ -60,36 +62,48 @@
 
       label {
         display: grid;
-        gap: 6px;
+        gap: 3px;
         color: #3c4043;
-        font-size: 13px;
+        font-size: 12px;
         font-weight: 700;
       }
 
       select,
-      input[type="text"] {
+      input[type="text"],
+      textarea {
         width: 100%;
         min-width: 0;
-        height: 38px;
         border: 1px solid #c7cdd6;
         border-radius: 6px;
-        padding: 0 10px;
         background: #fff;
         color: #202124;
-        font-size: 14px;
+        font-size: 12px;
+      }
+
+      select,
+      input[type="text"] {
+        height: 28px;
+        padding: 0 8px;
+      }
+
+      textarea {
+        height: 64px;
+        padding: 6px 8px;
+        resize: vertical;
+        line-height: 1.35;
       }
 
       input[type="checkbox"] {
-        width: 18px;
-        height: 18px;
+        width: 14px;
+        height: 14px;
       }
 
       .toolbar {
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 16px;
+        gap: 10px;
         align-items: end;
-        margin: 22px 0;
+        margin: 8px 0 10px;
       }
 
       .toolbar[hidden],
@@ -100,26 +114,26 @@
       .table-wrap {
         overflow-x: auto;
         border-top: 1px solid #d8dee8;
-        padding-top: 4px;
+        padding-top: 2px;
       }
 
       .table-title-nav {
         display: grid;
-        grid-template-columns: 38px minmax(0, 1fr) 38px;
-        gap: 10px;
+        grid-template-columns: 30px minmax(0, 1fr) 30px;
+        gap: 8px;
         align-items: center;
-        margin: 20px 0 14px;
+        margin: 8px 0 6px;
       }
 
       .nav-arrow {
-        width: 38px;
-        height: 38px;
+        width: 30px;
+        height: 30px;
         border: 1px solid #c7cdd6;
         border-radius: 6px;
         background: #fff;
         color: #202124;
         cursor: pointer;
-        font-size: 22px;
+        font-size: 18px;
         line-height: 1;
       }
 
@@ -137,7 +151,7 @@
       th,
       td {
         border-bottom: 1px solid #e4e8ef;
-        padding: 8px;
+        padding: 3px 6px;
         text-align: left;
         vertical-align: middle;
       }
@@ -145,13 +159,14 @@
       th {
         background: #e9eef6;
         color: #202124;
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 700;
         white-space: nowrap;
       }
 
       td {
         min-width: 160px;
+        font-size: 12px;
       }
 
       td.primary-cell {
@@ -161,9 +176,9 @@
 
       td.checkbox-cell,
       th.pi-header {
-        width: 48px;
-        min-width: 48px;
-        max-width: 48px;
+        width: 38px;
+        min-width: 38px;
+        max-width: 38px;
         text-align: center;
       }
 
@@ -178,15 +193,19 @@
       .admin-note {
         display: inline-flex;
         align-items: center;
-        min-height: 26px;
-        margin-left: 8px;
+        min-height: 20px;
+        margin-left: 6px;
         border: 1px solid #f2c94c;
         border-radius: 6px;
-        padding: 0 8px;
+        padding: 0 6px;
         background: #fff8dc;
         color: #684e00;
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 700;
+      }
+
+      .tutor-comment {
+        margin-top: 8px;
       }
 
       .save-bubble {
@@ -313,6 +332,10 @@
           <thead id="table-head"></thead>
           <tbody id="table-body"></tbody>
         </table>
+        <label class="tutor-comment" for="tutor-comment">
+          Comentari del tutor
+          <textarea id="tutor-comment" rows="3"></textarea>
+        </label>
       </section>
     </main>
 
@@ -333,7 +356,9 @@
         selectedGroup: '',
         evaluationData: null,
         rowsData: null,
-        dirtyRows: new Map()
+        dirtyRows: new Map(),
+        tutorCommentDirty: false,
+        lastTutorComment: ''
       };
 
       document.addEventListener('DOMContentLoaded', loadInitialData);
@@ -344,6 +369,7 @@
       document.getElementById('save-button').addEventListener('click', saveChanges);
       document.getElementById('prev-button').addEventListener('click', () => navigateSelection(-1));
       document.getElementById('next-button').addEventListener('click', () => navigateSelection(1));
+      document.getElementById('tutor-comment').addEventListener('input', handleTutorCommentInput);
 
       function loadInitialData() {
         setBusy(true, 'Carregant dades...');
@@ -406,6 +432,8 @@
         state.evaluationData = null;
         state.rowsData = null;
         state.dirtyRows = new Map();
+        state.tutorCommentDirty = false;
+        state.lastTutorComment = '';
         resetDetailSelectors();
         clearTable();
 
@@ -428,6 +456,8 @@
           .withSuccessHandler(data => {
             state.evaluationData = data;
             state.dirtyRows = new Map();
+            state.tutorCommentDirty = false;
+            state.lastTutorComment = '';
             renderDetailSelectors();
             setBusy(false);
             setStatus(data.message || 'Selecciona un alumne o una matèria.');
@@ -449,6 +479,7 @@
         subjectSelector.innerHTML = '<option value="">Selecciona una matèria...</option>';
         studentSelector.disabled = true;
         subjectSelector.disabled = true;
+        resetTutorComment();
         updateSaveButton();
       }
 
@@ -492,9 +523,11 @@
         const selectedSubject = document.getElementById('subject-selector').value;
         state.rowsData = null;
         state.dirtyRows = new Map();
+        state.tutorCommentDirty = false;
         clearTable();
 
         if (!selectedStudent && !selectedSubject) {
+          resetTutorComment();
           setStatus('Selecciona un alumne o una matèria.');
           return;
         }
@@ -520,6 +553,7 @@
           conceptColumns: state.evaluationData.conceptColumns || [],
           message: rows.length ? '' : 'No hi ha files per a la selecció actual.'
         };
+        syncTutorCommentForSelection();
         renderTable();
         setStatus(state.rowsData.message || '');
       }
@@ -551,6 +585,57 @@
         tableWrap.hidden = false;
         updateNavigationButtons();
         updateSaveButton();
+      }
+
+      function syncTutorCommentForSelection() {
+        const textarea = document.getElementById('tutor-comment');
+        if (!state.rowsData || state.rowsData.mode !== 'student') {
+          state.lastTutorComment = '';
+          state.tutorCommentDirty = false;
+          textarea.value = '';
+          textarea.disabled = true;
+          textarea.dataset.locked = 'true';
+          textarea.placeholder = 'Selecciona un alumne per editar el comentari.';
+          return;
+        }
+
+        const comment = getTutorCommentForCurrentStudent();
+        state.lastTutorComment = comment;
+        state.tutorCommentDirty = false;
+        textarea.value = comment;
+        textarea.disabled = false;
+        textarea.dataset.locked = 'false';
+        textarea.placeholder = '';
+      }
+
+      function resetTutorComment() {
+        const textarea = document.getElementById('tutor-comment');
+        state.tutorCommentDirty = false;
+        state.lastTutorComment = '';
+        textarea.value = '';
+        textarea.disabled = true;
+        textarea.dataset.locked = 'true';
+        textarea.placeholder = 'Selecciona un alumne per editar el comentari.';
+      }
+
+      function getTutorCommentForCurrentStudent() {
+        if (!state.evaluationData || !state.rowsData) return '';
+
+        const accountId = getCurrentStudentAccountId();
+        const commentsByAccount = state.evaluationData.tutorCommentsByStudentAccountId || {};
+        if (accountId && Object.prototype.hasOwnProperty.call(commentsByAccount, accountId)) {
+          return commentsByAccount[accountId] || '';
+        }
+
+        const commentsByName = state.evaluationData.tutorCommentsByStudentName || {};
+        const studentName = state.rowsData.selectedStudent || '';
+        return commentsByName[studentName] || '';
+      }
+
+      function getCurrentStudentAccountId() {
+        if (!state.rowsData || state.rowsData.mode !== 'student') return '';
+        const firstRow = (state.rowsData.rows || [])[0] || {};
+        return firstRow.studentAccountId || '';
       }
 
       function renderHeaderRow(primaryHeader, conceptColumns) {
@@ -643,6 +728,12 @@
         updateSaveButton();
       }
 
+      function handleTutorCommentInput() {
+        if (!state.rowsData || state.rowsData.mode !== 'student') return;
+        state.tutorCommentDirty = document.getElementById('tutor-comment').value !== state.lastTutorComment;
+        updateSaveButton();
+      }
+
       function collectRowPayload(tr) {
         const concepts = {};
         Array.from(tr.querySelectorAll('[data-role^="concept:"]')).forEach(input => {
@@ -659,7 +750,7 @@
 
       function saveChanges() {
         const rows = Array.from(state.dirtyRows.values());
-        if (!state.selectedEvaluation || !state.selectedGroup || !rows.length) return;
+        if (!state.selectedEvaluation || !state.selectedGroup || (!rows.length && !state.tutorCommentDirty)) return;
 
         const selectedStudent = document.getElementById('student-selector').value;
         const selectedSubject = document.getElementById('subject-selector').value;
@@ -669,7 +760,9 @@
             const updatedRows = data.updatedRows || [];
             mergeSavedRowsIntoEvaluationData(updatedRows);
             mergeSavedRowsIntoRowsData(updatedRows);
+            mergeSavedTutorComment(data.tutorComment);
             state.dirtyRows = new Map();
+            state.tutorCommentDirty = false;
             setBusy(false);
             renderTable();
             setStatus('Canvis desats.', 'success');
@@ -683,7 +776,10 @@
             group: state.selectedGroup,
             student: selectedStudent,
             subject: selectedSubject,
-            rows
+            rows,
+            studentAccountId: getCurrentStudentAccountId(),
+            tutorComment: document.getElementById('tutor-comment').value,
+            tutorCommentDirty: state.tutorCommentDirty
           });
       }
 
@@ -704,10 +800,26 @@
         return (baseRows || []).map(row => rowsBySheetRow.get(String(row.sheetRow)) || row);
       }
 
+      function mergeSavedTutorComment(savedComment) {
+        if (!savedComment || !state.evaluationData) return;
+
+        state.evaluationData.tutorCommentsByStudentAccountId = state.evaluationData.tutorCommentsByStudentAccountId || {};
+        state.evaluationData.tutorCommentsByStudentName = state.evaluationData.tutorCommentsByStudentName || {};
+        if (savedComment.studentAccountId) {
+          state.evaluationData.tutorCommentsByStudentAccountId[savedComment.studentAccountId] = savedComment.tutorComment || '';
+        }
+        if (savedComment.studentFullName) {
+          state.evaluationData.tutorCommentsByStudentName[savedComment.studentFullName] = savedComment.tutorComment || '';
+        }
+        state.lastTutorComment = savedComment.tutorComment || '';
+        document.getElementById('tutor-comment').value = state.lastTutorComment;
+      }
+
       function clearTable() {
         document.getElementById('table-head').innerHTML = '';
         document.getElementById('table-body').innerHTML = '';
         document.getElementById('table-wrap').hidden = true;
+        resetTutorComment();
         updateNavigationButtons();
         updateSaveButton();
       }
@@ -758,7 +870,9 @@
       }
 
       function updateSaveButton() {
-        document.getElementById('save-button').disabled = !state.dirtyRows.size || document.body.classList.contains('busy');
+        document.getElementById('save-button').disabled =
+          (!state.dirtyRows.size && !state.tutorCommentDirty) ||
+          document.body.classList.contains('busy');
       }
 
       function setBusy(isBusy, message) {
@@ -767,9 +881,9 @@
         if (message && isBusy) {
           document.getElementById('overlay-message').textContent = message;
         }
-        Array.from(document.querySelectorAll('select, input, button')).forEach(element => {
+        Array.from(document.querySelectorAll('select, input, textarea, button')).forEach(element => {
           if (element.id === 'save-button') {
-            element.disabled = isBusy || !state.dirtyRows.size;
+            element.disabled = isBusy || (!state.dirtyRows.size && !state.tutorCommentDirty);
           } else {
             element.disabled = isBusy || element.dataset.locked === 'true';
           }

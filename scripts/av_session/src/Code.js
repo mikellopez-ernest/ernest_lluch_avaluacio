@@ -16,6 +16,8 @@ const ADMIN_PRIVILEGES_MARKER = 'ADMIN_PRIVILEGES';
 const STUDENT_ACCOUNT_ID_HEADER = 'student_account_id';
 const SUBJECT_EVALUATION_HEADER = 'Avaluació de la matèria';
 const TUTORING_GROUP_HEADER = 'grup_tutoria';
+const TUTOR_COMMENT_HEADER = 'Comentari_tutor';
+const TUTORIA_SHEET_SUFFIX = '_tutoria';
 
 function doGet() {
   if (!isAllowedUser_()) {
@@ -84,14 +86,16 @@ function getAvSessionEvaluationData(payload) {
   const config = readEvaluationConfig_(gradesSpreadsheet, evaluation.sheetName);
   const table = readEvaluationTable_(sheet);
   const rowsForGroup = table.rows.filter(row => rowIncludesGroup_(row, selectedGroup));
+  const tutorComments = readTutoriaCommentsForGroup_(gradesSpreadsheet, evaluation.sheetName, selectedGroup);
 
   return {
     evaluation,
     group: selectedGroup,
-    students: uniqueSorted_(rowsForGroup.map(row => row.studentFullName))
-      .map(name => ({ name })),
+    students: buildStudentOptions_(rowsForGroup),
     subjects: uniqueSorted_(rowsForGroup.map(row => row.subjectFullName)),
     rows: rowsForGroup,
+    tutorCommentsByStudentAccountId: tutorComments.byStudentAccountId,
+    tutorCommentsByStudentName: tutorComments.byStudentName,
     subjectEvaluationOptions: config.subjectEvaluationOptions,
     subjectEvaluationColors: config.subjectEvaluationColors,
     conceptColumns: mergeConceptColumns_(table.conceptColumns, config.conceptColumns),
@@ -148,8 +152,12 @@ function saveAvSessionRows(payload) {
   const selectedStudent = String(payload && payload.student || '').trim();
   const selectedSubject = String(payload && payload.subject || '').trim();
   const rows = Array.isArray(payload && payload.rows) ? payload.rows : [];
+  const tutorCommentDirty = payload && payload.tutorCommentDirty === true;
   if (!selectedGroup) throw new Error('Cal seleccionar un grup.');
-  if (!rows.length) return getAvSessionRows(payload);
+  if (!rows.length && !tutorCommentDirty) return getAvSessionRows(payload);
+  if (tutorCommentDirty && !selectedStudent) {
+    throw new Error('El comentari del tutor només es pot desar amb un alumne seleccionat.');
+  }
 
   const context = resolveUserVisibilityContext_();
   assertAllowedGroup_(selectedGroup, context.visibleGroups);
@@ -164,57 +172,75 @@ function saveAvSessionRows(payload) {
     }
 
     const gradesSpreadsheet = openLogicalTableSpreadsheet_(GRADES_TABLE_NAME);
-    const sheet = getRequiredSheet_(gradesSpreadsheet, activeEvaluation.sheetName);
-    const headers = readEvaluationHeaders_(sheet);
-    const columnIndexes = getWritableColumnIndexes_(headers);
     const dirtySheetRows = uniqueSortedNumbers_(rows.map(row => row && row.sheetRow));
-    const rowContext = readEvaluationRowsBySheetRow_(sheet, headers, dirtySheetRows);
-    const tableRowsBySheetRow = new Map(rowContext.rows.map(row => [row.sheetRow, row]));
-    const lastRow = sheet.getLastRow();
+    let savedTutorComment = null;
+    let updatedRows = [];
 
-    rows.forEach(row => {
-      const sheetRow = Number(row.sheetRow);
-      if (!Number.isFinite(sheetRow) || sheetRow < 2 || sheetRow > lastRow) {
-        throw new Error('Fila no vàlida.');
-      }
+    if (dirtySheetRows.length) {
+      const sheet = getRequiredSheet_(gradesSpreadsheet, activeEvaluation.sheetName);
+      const headers = readEvaluationHeaders_(sheet);
+      const columnIndexes = getWritableColumnIndexes_(headers);
+      const rowContext = readEvaluationRowsBySheetRow_(sheet, headers, dirtySheetRows);
+      const tableRowsBySheetRow = new Map(rowContext.rows.map(row => [row.sheetRow, row]));
+      const lastRow = sheet.getLastRow();
 
-      const modelRow = tableRowsBySheetRow.get(sheetRow);
-      if (!modelRow || !rowIncludesGroup_(modelRow, selectedGroup)) {
-        throw new Error('No tens permís per modificar una o més files.');
-      }
-      if (selectedStudent && modelRow.studentFullName !== selectedStudent) {
-        throw new Error('Una fila ja no correspon a l\'alumne seleccionat.');
-      }
-      if (selectedSubject && modelRow.subjectFullName !== selectedSubject) {
-        throw new Error('Una fila ja no correspon a la matèria seleccionada.');
-      }
-
-      const values = rowContext.valuesBySheetRow.get(sheetRow);
-      values[columnIndexes.pi] = row.pi === true;
-      values[columnIndexes.subjectEvaluation] = String(row.subjectEvaluation || '').trim();
-      modelRow.pi = row.pi === true;
-      modelRow.subjectEvaluation = String(row.subjectEvaluation || '').trim();
-
-      const concepts = row.concepts && typeof row.concepts === 'object' ? row.concepts : {};
-      columnIndexes.concepts.forEach(concept => {
-        if (Object.prototype.hasOwnProperty.call(concepts, concept.header)) {
-          const conceptValue = String(concepts[concept.header] || '').trim();
-          values[concept.index] = conceptValue;
-          modelRow.concepts[concept.header] = conceptValue;
+      rows.forEach(row => {
+        const sheetRow = Number(row.sheetRow);
+        if (!Number.isFinite(sheetRow) || sheetRow < 2 || sheetRow > lastRow) {
+          throw new Error('Fila no vàlida.');
         }
-      });
-    });
 
-    const firstWritableColumn = getFirstWritableColumn_(headers);
-    const lastWritableColumn = getLastWritableColumn_(headers);
-    const writableWidth = lastWritableColumn - firstWritableColumn + 1;
-    if (writableWidth > 0) {
-      getContiguousRuns_(dirtySheetRows).forEach(run => {
-        const writableValues = getRunNumbers_(run).map(sheetRow =>
-          rowContext.valuesBySheetRow.get(sheetRow).slice(firstWritableColumn - 1, lastWritableColumn)
-        );
-        sheet.getRange(run.start, firstWritableColumn, run.count, writableWidth).setValues(writableValues);
+        const modelRow = tableRowsBySheetRow.get(sheetRow);
+        if (!modelRow || !rowIncludesGroup_(modelRow, selectedGroup)) {
+          throw new Error('No tens permís per modificar una o més files.');
+        }
+        if (selectedStudent && modelRow.studentFullName !== selectedStudent) {
+          throw new Error('Una fila ja no correspon a l\'alumne seleccionat.');
+        }
+        if (selectedSubject && modelRow.subjectFullName !== selectedSubject) {
+          throw new Error('Una fila ja no correspon a la matèria seleccionada.');
+        }
+
+        const values = rowContext.valuesBySheetRow.get(sheetRow);
+        values[columnIndexes.pi] = row.pi === true;
+        values[columnIndexes.subjectEvaluation] = String(row.subjectEvaluation || '').trim();
+        modelRow.pi = row.pi === true;
+        modelRow.subjectEvaluation = String(row.subjectEvaluation || '').trim();
+
+        const concepts = row.concepts && typeof row.concepts === 'object' ? row.concepts : {};
+        columnIndexes.concepts.forEach(concept => {
+          if (Object.prototype.hasOwnProperty.call(concepts, concept.header)) {
+            const conceptValue = String(concepts[concept.header] || '').trim();
+            values[concept.index] = conceptValue;
+            modelRow.concepts[concept.header] = conceptValue;
+          }
+        });
       });
+
+      const firstWritableColumn = getFirstWritableColumn_(headers);
+      const lastWritableColumn = getLastWritableColumn_(headers);
+      const writableWidth = lastWritableColumn - firstWritableColumn + 1;
+      if (writableWidth > 0) {
+        getContiguousRuns_(dirtySheetRows).forEach(run => {
+          const writableValues = getRunNumbers_(run).map(sheetRow =>
+            rowContext.valuesBySheetRow.get(sheetRow).slice(firstWritableColumn - 1, lastWritableColumn)
+          );
+          sheet.getRange(run.start, firstWritableColumn, run.count, writableWidth).setValues(writableValues);
+        });
+      }
+
+      updatedRows = rowContext.rows;
+    }
+
+    if (tutorCommentDirty) {
+      savedTutorComment = saveTutoriaComment_(
+        gradesSpreadsheet,
+        activeEvaluation.sheetName,
+        selectedGroup,
+        selectedStudent,
+        String(payload && payload.studentAccountId || '').trim(),
+        String(payload && payload.tutorComment || '')
+      );
     }
 
     return {
@@ -223,7 +249,8 @@ function saveAvSessionRows(payload) {
       mode: selectedStudent ? 'student' : 'subject',
       selectedStudent,
       selectedSubject,
-      updatedRows: rowContext.rows,
+      updatedRows,
+      tutorComment: savedTutorComment,
       message: ''
     };
   } finally {
@@ -356,6 +383,7 @@ function buildEvaluationRow_(headers, row, sheetRow) {
     tutoringGroup: indexes.get(normalizeHeader_(TUTORING_GROUP_HEADER)),
     subjectFullName: indexes.get(normalizeHeader_('subject_full_name')),
     studentFullName: indexes.get(normalizeHeader_('student_full_name')),
+    studentAccountId: indexes.get(normalizeHeader_(STUDENT_ACCOUNT_ID_HEADER)),
     pi: indexes.get(normalizeHeader_('PI')),
     subjectEvaluation: indexes.get(normalizeHeader_(SUBJECT_EVALUATION_HEADER))
   };
@@ -366,6 +394,9 @@ function buildEvaluationRow_(headers, row, sheetRow) {
     tutoringGroups: splitCommaValues_(row[headerIndexes.tutoringGroup]),
     subjectFullName: String(row[headerIndexes.subjectFullName] || '').trim(),
     studentFullName: String(row[headerIndexes.studentFullName] || '').trim(),
+    studentAccountId: headerIndexes.studentAccountId === undefined
+      ? ''
+      : String(row[headerIndexes.studentAccountId] || '').trim(),
     pi: row[headerIndexes.pi] === true || String(row[headerIndexes.pi]).trim().toUpperCase() === 'TRUE',
     subjectEvaluation: String(row[headerIndexes.subjectEvaluation] || '').trim(),
     concepts: conceptColumns.reduce((result, concept) => {
@@ -375,6 +406,126 @@ function buildEvaluationRow_(headers, row, sheetRow) {
   };
 
   return model.tutoringGroups.length && model.subjectFullName && model.studentFullName ? model : null;
+}
+
+function buildStudentOptions_(rows) {
+  const studentsByName = new Map();
+  (rows || []).forEach(row => {
+    const name = String(row.studentFullName || '').trim();
+    if (!name || studentsByName.has(name)) return;
+    studentsByName.set(name, {
+      name,
+      accountId: String(row.studentAccountId || '').trim()
+    });
+  });
+
+  return Array.from(studentsByName.values()).sort((a, b) => compareText_(a.name, b.name));
+}
+
+function readTutoriaCommentsForGroup_(gradesSpreadsheet, evaluationSheetName, selectedGroup) {
+  const sheet = getRequiredSheet_(gradesSpreadsheet, `${evaluationSheetName}${TUTORIA_SHEET_SUFFIX}`);
+  const values = sheet.getDataRange().getValues();
+  if (values.length < 2) return { byStudentAccountId: {}, byStudentName: {} };
+
+  const headers = values[0].map(header => String(header || '').trim());
+  const indexes = getTutoriaColumnIndexes_(headers);
+  const byStudentAccountId = {};
+  const byStudentName = {};
+
+  values.slice(1).forEach(row => {
+    const tutoringGroups = splitCommaValues_(row[indexes.tutoringGroup]);
+    if (!tutoringGroups.some(group => normalizeGroupMatch_(group) === normalizeGroupMatch_(selectedGroup))) return;
+
+    const studentName = String(row[indexes.studentFullName] || '').trim();
+    const studentAccountId = String(row[indexes.studentAccountId] || '').trim();
+    const comment = String(row[indexes.tutorComment] || '');
+    if (studentAccountId) byStudentAccountId[studentAccountId] = comment;
+    if (studentName) byStudentName[studentName] = comment;
+  });
+
+  return { byStudentAccountId, byStudentName };
+}
+
+function saveTutoriaComment_(gradesSpreadsheet, evaluationSheetName, selectedGroup, selectedStudent, studentAccountId, tutorComment) {
+  const sheet = getRequiredSheet_(gradesSpreadsheet, `${evaluationSheetName}${TUTORIA_SHEET_SUFFIX}`);
+  const headers = readTutoriaHeaders_(sheet);
+  const indexes = getTutoriaColumnIndexes_(headers);
+  const sheetRow = findTutoriaStudentRow_(sheet, indexes, selectedGroup, selectedStudent, studentAccountId);
+  sheet.getRange(sheetRow, indexes.tutorComment + 1).setValue(tutorComment);
+
+  return {
+    studentAccountId,
+    studentFullName: selectedStudent,
+    tutorComment
+  };
+}
+
+function readTutoriaHeaders_(sheet) {
+  const lastColumn = sheet.getLastColumn();
+  if (lastColumn < 1) throw new Error(`El full ${sheet.getName()} està buit.`);
+  return sheet.getRange(1, 1, 1, lastColumn).getValues()[0]
+    .map(header => String(header || '').trim());
+}
+
+function getTutoriaColumnIndexes_(headers) {
+  const indexes = buildHeaderIndexMap_(headers);
+  const requiredHeaders = [
+    TUTORING_GROUP_HEADER,
+    'student_full_name',
+    STUDENT_ACCOUNT_ID_HEADER,
+    TUTOR_COMMENT_HEADER
+  ];
+
+  requiredHeaders.forEach(header => {
+    if (!indexes.has(normalizeHeader_(header))) {
+      throw new Error(`Falta la columna obligatòria al full de tutoria: ${header}`);
+    }
+  });
+
+  return {
+    tutoringGroup: indexes.get(normalizeHeader_(TUTORING_GROUP_HEADER)),
+    studentFullName: indexes.get(normalizeHeader_('student_full_name')),
+    studentAccountId: indexes.get(normalizeHeader_(STUDENT_ACCOUNT_ID_HEADER)),
+    tutorComment: indexes.get(normalizeHeader_(TUTOR_COMMENT_HEADER))
+  };
+}
+
+function findTutoriaStudentRow_(sheet, indexes, selectedGroup, selectedStudent, studentAccountId) {
+  const cleanAccountId = String(studentAccountId || '').trim();
+  const rowNumbers = cleanAccountId
+    ? findSheetRowsByColumnValue_(sheet, indexes.studentAccountId + 1, cleanAccountId)
+    : [];
+  const fallbackRowNumbers = rowNumbers.length
+    ? []
+    : findSheetRowsByColumnValue_(sheet, indexes.studentFullName + 1, selectedStudent);
+  const candidateRows = rowNumbers.concat(fallbackRowNumbers);
+  if (!candidateRows.length) {
+    throw new Error('No s\'ha trobat la fila de tutoria per a aquest alumne.');
+  }
+
+  const width = sheet.getLastColumn();
+  for (const rowNumber of candidateRows) {
+    const row = sheet.getRange(rowNumber, 1, 1, width).getValues()[0];
+    const sameStudent = normalizeText_(row[indexes.studentFullName]) === normalizeText_(selectedStudent);
+    const sameAccount = !cleanAccountId || String(row[indexes.studentAccountId] || '').trim() === cleanAccountId;
+    const sameGroup = splitCommaValues_(row[indexes.tutoringGroup])
+      .some(group => normalizeGroupMatch_(group) === normalizeGroupMatch_(selectedGroup));
+    if (sameStudent && sameAccount && sameGroup) return rowNumber;
+  }
+
+  throw new Error('No s\'ha trobat una fila de tutoria vàlida per a aquest alumne i grup.');
+}
+
+function findSheetRowsByColumnValue_(sheet, column, value) {
+  const cleanValue = String(value || '').trim();
+  const lastRow = sheet.getLastRow();
+  if (!cleanValue || lastRow < 2) return [];
+
+  return sheet.getRange(2, column, lastRow - 1, 1)
+    .createTextFinder(cleanValue)
+    .matchEntireCell(true)
+    .findAll()
+    .map(cell => cell.getRow());
 }
 
 function readEvaluationConfig_(gradesSpreadsheet, evaluationSheetName) {

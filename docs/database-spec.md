@@ -46,7 +46,7 @@ const tablesSheet = registrySpreadsheet.getSheetByName('tables');
 | `Càrrega lectiva` | `assignatures` |
 | `Horaris` | `GPU001` |
 | `Dinantia` | `dinantia_2_dades_alumnes` |
-| `Grades` | `subjects_cache`, `avaluacions`, generated evaluation sheets, generated evaluation config sheets |
+| `Grades` | `subjects_cache`, `avaluacions`, generated evaluation sheets, generated evaluation config sheets, generated tutoria sheets |
 
 The old `Grades` -> `subjects` table is obsolete and must not be used for the new configuration workflow.
 
@@ -367,6 +367,7 @@ The cache-building function must be public so it can be run directly.
 | G | `mat_reduit` | Value from `Horaris` -> `GPU001` column D. |
 | H | `subject_full_name` | Resolved subject display name from `assignatures.full_name`. |
 | I | `subject_dinantia_group_av` | Dinantia group ID selected for assessment. Defaults to `group_name` when rebuilt from `GPU001`. |
+| J | `materia_clau` | Boolean checkbox. Marks the cache row used to derive `grup_tutoria` for each student. |
 
 Important: Dinantia group IDs are strings and can look like human-readable group names, for example `1r ESO A`. Do not assume numeric IDs.
 
@@ -390,10 +391,12 @@ exact normalized group codes, not use substring matching.
 12. Resolve each joined group code independently into a Dinantia group name.
 13. Join resolved Dinantia group names with comma-space in `subjects_cache.group_name`.
 14. Resolve teacher, teacher email, and subject display values.
-15. Delete rows without a resolved `group_name`.
-16. Sort rows by `group_name`.
-17. Clear/rewrite `Grades` -> `subjects_cache` entirely.
-18. Write headers and all derived rows.
+15. Set `materia_clau = TRUE` for rows whose resolved subject is `TUTORIA`; set all other rows to `FALSE`.
+16. Keep only one `materia_clau = TRUE` row per individual local group code.
+17. Delete rows without a resolved `group_name`.
+18. Sort rows by `group_name`.
+19. Clear/rewrite `Grades` -> `subjects_cache` entirely.
+20. Write headers, all derived rows, and a checkbox validation rule on column J.
 
 The first pass uses row counts as the number of scheduled hours for each
 teacher inside a `group + subject` combination. A teacher with fewer rows/hours
@@ -494,6 +497,19 @@ specific Dinantia group ID to assess whenever the fallback is ambiguous. If the
 fallback remains a comma-separated group list, evaluation generation must expand
 students from every resolved group in that list.
 
+`materia_clau`:
+
+```text
+subjects_cache.materia_clau = TRUE when the row is the tutorial/key subject for its local group
+```
+
+When rebuilt from `GPU001`, rows whose resolved `subject_full_name` or raw
+`mat_reduit` normalizes to `TUTORIA` are checked by default. All other rows are
+unchecked by default. The configuration endpoint may change this manually, but
+only one row may be checked for each individual value in `subjects_cache.group`.
+For multi-group rows, one checked row may be the key row for every group code
+contained in that comma-separated `group` array.
+
 If group, teacher, or subject references cannot be resolved, the cache builder should preserve the source code and leave the unresolved display value blank or fall back to the source code when a user-facing value is required.
 
 ## Generated Evaluation Sheets
@@ -545,6 +561,8 @@ custom concept.
 ### Main Evaluation Sheet Layout
 
 The main evaluation sheet is generated from `Grades` -> `subjects_cache`.
+Rows where `subjects_cache.materia_clau = TRUE` are not written to the main
+sheet. Those rows are written to the generated tutoria sheet instead.
 
 For each `subjects_cache` row:
 
@@ -556,7 +574,8 @@ For each `subjects_cache` row:
 6. Use an in-memory student index built from Dinantia accounts.
 7. Match the resolved Dinantia group IDs against each student account's `groups.member` values.
 8. Dedupe students per cache row by Dinantia account ID.
-9. Create one main-sheet row per matched student.
+9. If `subjects_cache.materia_clau = TRUE`, create tutoria-sheet rows.
+10. Otherwise, create one main-sheet row per matched student.
 
 Main sheet columns:
 
@@ -578,12 +597,11 @@ Teacher-facing UIs may use config column C colors to color the generated sheet
 row according to the selected `Avaluació de la matèria` value. Missing or
 invalid colors fall back to `#FFFFFF`.
 
-`grup_tutoria` is filled after all generated rows exist. For each student,
-generation finds that student's row whose `subject_full_name` normalizes to
-`TUTORIA`, reads that row's `group_name` value from column B, and writes that
-value to `grup_tutoria` on every generated row for the same
-`student_account_id`. If no `TUTORIA` row exists for the student,
-`grup_tutoria` remains blank.
+`grup_tutoria` is filled after tutoria rows exist. For each student, generation
+uses the row in `{sheet_name}_tutoria`, reads that row's `group_name` value from
+column B, and writes that value to `grup_tutoria` on every generated row for the
+same `student_account_id` in both generated sheets. If no tutoria row exists for
+the student, `grup_tutoria` remains blank.
 
 `group` is the canonical local group-code membership for the generated
 evaluation row. When a source cache row belongs to multiple local groups, write
@@ -612,6 +630,37 @@ Teacher-facing UIs should render `PI` as a fixed narrow checkbox column rather
 than an adaptive text column.
 
 The config sheet must also freeze and format its header row.
+
+### Tutoria Evaluation Sheet Layout
+
+For every evaluation sheet `{sheet_name}`, the configuration endpoint also
+creates `{sheet_name}_tutoria`.
+
+This sheet contains generated rows from `subjects_cache` where
+`materia_clau = TRUE`. These rows are excluded from the main evaluation sheet.
+
+Tutoria sheet columns:
+
+| Column | Header | Source / Behavior |
+| --- | --- | --- |
+| A | `group` | Exact `subjects_cache.group` value. This may be a comma-separated array such as `1F,2F`. |
+| B | `group_name` | `subjects_cache.group_name`. |
+| C | `teacher_full_name` | `subjects_cache.teacher_full_name`. |
+| D | `teacher_email` | `subjects_cache.teacher_email`. |
+| E | `subject_full_name` | `subjects_cache.subject_full_name`. |
+| F | `student_full_name` | Full student name from Dinantia. |
+| G | `grup_tutoria` | Tutorial group display value for the student, derived from this sheet's `group_name`. |
+| H | `student_account_id` | Dinantia student account ID. |
+| I | `Comentari_tutor` | Blank at creation time. Reserved for tutor comments. |
+| J | `Butlletí_url` | Blank at creation time. Reserved for bulletin/report URL. |
+
+The tutoria sheet must be written in bulk and formatted after writing:
+
+1. Freeze the header row.
+2. Bold the header row.
+3. Apply a light header background.
+4. Wrap cell text.
+5. Auto-resize columns.
 
 Dinantia students must be indexed by group ID in memory while creating the sheet so the same group is not fetched repeatedly.
 

@@ -28,7 +28,7 @@ Only these functions may be public:
 | `buildSubjectsCache` | Full rebuild of `Grades` -> `subjects_cache`. |
 | `getConfigurationData` | Frontend data loader. |
 | `saveSubjectsCacheEdits` | Saves dirty/new/deleted cache rows. |
-| `createEvaluation` | Creates the registry row, config sheet, main evaluation sheet, and generated student rows. |
+| `createEvaluation` | Creates the registry row, config sheet, main evaluation sheet, tutoria sheet, and generated student rows. |
 | `getEvaluationCreationStatus` | Polling endpoint for long evaluation creation progress. |
 
 All other functions must be private helpers with a trailing `_`.
@@ -69,10 +69,16 @@ The group selector is built from individual values in `subjects_cache.group`.
 Rows with comma-separated groups, such as `1F,2F`, appear when either `1F` or
 `2F` is selected.
 
+Group order is first-appearance order from `subjects_cache`, reading the sheet
+top to bottom and splitting comma-separated group arrays left to right. Duplicate
+group codes are ignored after their first appearance. Do not sort this group
+list alphabetically.
+
 Editable fields:
 
 | UI label | Cache column | Options |
 | --- | --- | --- |
+| `Tutoria` | `materia_clau` | Radio button. Only one row can be selected per group code. |
 | `Assignatura` | `subject_full_name` | Unique cache subject names, sorted. |
 | `Professor` | `teacher_full_name` | Unique cache teacher names, sorted. |
 | `Grup d'alumnes per avaluar` | `subject_dinantia_group_av` | Dinantia group IDs from `/v1/groups/index`, sorted. |
@@ -86,7 +92,9 @@ Save rules:
 5. New rows use the currently selected group code as `group`.
 6. New rows resolve `group_name` through `Dinantia.dinantia_2_dades_alumnes`.
 7. Deleted row IDs are removed from `subjects_cache`.
-8. The server rewrites `subjects_cache` sorted by `group_name`.
+8. If a dirty/new row has `materia_clau = TRUE`, the server clears `materia_clau` from every other row containing the selected group code.
+9. The server normalizes `materia_clau` so only one row remains checked for each individual group code.
+10. The server rewrites `subjects_cache` sorted by `group_name`.
 
 ## Cache Rebuild
 
@@ -124,8 +132,10 @@ Rebuild algorithm:
 8. Within each event, combine distinct groups when teacher and subject match.
 9. Resolve `group_name`, `teacher_full_name`, `teacher_email`, and `subject_full_name`.
 10. Fill `subject_dinantia_group_av` with `group_name` as the rebuild fallback.
-11. Drop rows without `group_name`.
-12. Rewrite `subjects_cache`.
+11. Set `materia_clau = TRUE` for TUTORIA rows by default and `FALSE` for all other rows.
+12. Keep only one `materia_clau = TRUE` row per individual local group code.
+13. Drop rows without `group_name`.
+14. Rewrite `subjects_cache`.
 
 ## Create Evaluation Modal
 
@@ -135,7 +145,7 @@ The `Crear avaluació` modal contains:
 | --- | --- |
 | `H1` | `Crear una avaluació` |
 | Evaluation name | Label `Nom de l'avaluació`, placeholder `p.e. 1a avaluació`. |
-| Group list | `Grups a avaluar`; one checkbox per individual `subjects_cache.group` code, checked by default. |
+| Group list | `Grups a avaluar`; one checkbox per individual `subjects_cache.group` code, checked by default, using first-appearance order from `subjects_cache`. |
 | Subject values | `Avaluació de les matèries`; dynamic list with text, color picker, and delete controls. |
 | Extra concepts | `Altres conceptes a avaluar`; dynamic concepts, each with dynamic option rows. |
 
@@ -170,12 +180,13 @@ When the user confirms:
 2. Require at least one selected group code.
 3. Create the main sheet `{sheet_name}` in `Grades`.
 4. Create `{sheet_name}_config`.
-5. Append `Grades` -> `avaluacions` with `Estat = Creada`.
-6. Write the config sheet, including subject-evaluation colors.
-7. Populate the main sheet from `subjects_cache`.
+5. Create `{sheet_name}_tutoria`.
+6. Append `Grades` -> `avaluacions` with `Estat = Creada`.
+7. Write the config sheet, including subject-evaluation colors.
+8. Populate the main sheet and tutoria sheet from `subjects_cache`.
 
-If `{sheet_name}` or `{sheet_name}_config` already exists, fail clearly and do
-not overwrite existing data.
+If `{sheet_name}`, `{sheet_name}_config`, or `{sheet_name}_tutoria` already
+exists, fail clearly and do not overwrite existing data.
 
 The popup closes once creation starts. The busy overlay stays visible and polls
 `getEvaluationCreationStatus(runId)` until complete or error.
@@ -192,17 +203,35 @@ For each `subjects_cache` row:
 6. Index students by every string found in `account.groups`.
 7. For the cache row, collect students from all resolved Dinantia group IDs.
 8. Dedupe students by Dinantia account ID.
-9. Write one generated sheet row per deduped student.
-10. Fill `grup_tutoria` for every generated row from the student's `TUTORIA` row.
+9. If `subjects_cache.materia_clau = TRUE`, write the generated rows to `{sheet_name}_tutoria`, not to `{sheet_name}`.
+10. If `subjects_cache.materia_clau != TRUE`, write one generated main-sheet row per deduped student.
+11. Fill `grup_tutoria` for every generated main row from the student's tutoria row.
 
 Important invariant: if a source cache row has `group = 2A,2B,2C,2D,2E`, the
 generated evaluation rows must preserve that exact group array in the generated
 sheet's `group` column.
 
-`grup_tutoria` rule: for each generated student, find the row whose
-`subject_full_name` normalizes to `TUTORIA`, copy that row's `group_name`, and
-write it into `grup_tutoria` on every row for the same `student_account_id`.
-Do not use visible row order or student name as the identity.
+`grup_tutoria` rule: for each generated student, find that student's row in
+`{sheet_name}_tutoria`, copy that row's `group_name`, and write it into
+`grup_tutoria` on every row for the same `student_account_id` in both generated
+sheets. Do not use visible row order or student name as the identity. `TUTORIA`
+is only the rebuild default for checking `materia_clau`; it is not a hardcoded
+generation rule.
+
+`{sheet_name}_tutoria` columns:
+
+| Column | Header | Source / Behavior |
+| --- | --- | --- |
+| A | `group` | Same generated field as the main sheet. |
+| B | `group_name` | Same generated field as the main sheet. |
+| C | `teacher_full_name` | Same generated field as the main sheet. |
+| D | `teacher_email` | Same generated field as the main sheet. |
+| E | `subject_full_name` | Same generated field as the main sheet. |
+| F | `student_full_name` | Same generated field as the main sheet. |
+| G | `grup_tutoria` | Same generated tutorial group metadata. |
+| H | `student_account_id` | Dinantia student account ID. |
+| I | `Comentari_tutor` | Blank at creation time. |
+| J | `Butlletí_url` | Blank at creation time. |
 
 ### Progress Logging
 
@@ -212,16 +241,16 @@ Each run uses a per-run ID. Log and publish progress for:
 | --- | --- |
 | start | Received payload summary. |
 | lock | Script lock waiting/acquired. |
-| normalized names | Main and config sheet names. |
+| normalized names | Main, config, and tutoria sheet names. |
 | inserting sheets | New sheets are being created. |
 | registering evaluation | Registry row is being written. |
 | writing config | Config sheet is being written. |
-| populating main sheet | Student expansion has started. |
+| populating main sheet | Student expansion for main and tutoria sheets has started. |
 | cache loaded | Cache rows and Dinantia group count. |
 | accounts loaded | Dinantia accounts read. |
 | student index built | Matched groups and indexed student rows. |
-| writing main | Generated rows being written. |
-| complete | Main sheet rows written. |
+| writing main | Generated main and tutoria rows being written. |
+| complete | Main and tutoria sheet rows written. |
 | release | Script lock released. |
 
 ## Manual Authorization

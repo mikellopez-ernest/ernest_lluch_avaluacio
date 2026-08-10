@@ -99,7 +99,7 @@
       .editor-header,
       .cache-row {
         display: grid;
-        grid-template-columns: 1fr 1fr 1fr;
+        grid-template-columns: 82px 1fr 1fr 1fr;
         gap: 12px;
       }
 
@@ -128,6 +128,19 @@
         color: var(--muted);
         font-size: 13px;
         font-weight: 700;
+      }
+
+      .radio-cell {
+        align-items: center;
+        display: flex;
+        justify-content: center;
+        min-height: 40px;
+      }
+
+      input[type="radio"] {
+        accent-color: var(--accent);
+        height: 18px;
+        width: 18px;
       }
 
       .rows {
@@ -454,6 +467,18 @@
           padding-right: 42px;
           border-bottom: 1px solid var(--line);
         }
+
+        .radio-cell {
+          justify-content: flex-start;
+        }
+
+        .radio-cell::after {
+          content: 'Tutoria';
+          color: var(--muted);
+          font-size: 13px;
+          font-weight: 700;
+          margin-left: 8px;
+        }
       }
     </style>
   </head>
@@ -475,6 +500,7 @@
 
       <section id="editor" class="editor-panel" hidden>
         <div class="editor-header">
+          <span>Tutoria</span>
           <span>Assignatura</span>
           <span>Professor</span>
           <span>Grup d'alumnes per avaluar</span>
@@ -638,6 +664,18 @@
         item.dataset.groupName = row.groupName || '';
         item.dataset.dirty = row.id ? 'false' : 'true';
 
+        const materiaClauCell = document.createElement('label');
+        materiaClauCell.className = 'radio-cell';
+
+        const materiaClauRadio = document.createElement('input');
+        materiaClauRadio.type = 'radio';
+        materiaClauRadio.name = 'materia-clau';
+        materiaClauRadio.dataset.role = 'materia-clau';
+        materiaClauRadio.checked = row.materiaClau === true;
+        materiaClauRadio.setAttribute('aria-label', 'Marcar com a tutoria');
+
+        materiaClauCell.appendChild(materiaClauRadio);
+
         const subjectSelect = createSelect('subject', state.options.subjects, row.subjectFullName);
         const teacherSelect = createSelect('teacher', state.options.teachers, row.teacherFullName);
         const dinantiaGroupSelect = createSelect('dinantia-group', state.options.dinantiaGroups, row.subjectDinantiaGroupAv);
@@ -650,13 +688,13 @@
         });
         deleteButton.classList.add('cache-row-delete');
 
-        [subjectSelect, teacherSelect, dinantiaGroupSelect].forEach(select => {
-          select.addEventListener('change', () => {
+        [materiaClauRadio, subjectSelect, teacherSelect, dinantiaGroupSelect].forEach(control => {
+          control.addEventListener('change', () => {
             item.dataset.dirty = 'true';
           });
         });
 
-        item.append(subjectSelect, teacherSelect, dinantiaGroupSelect, deleteButton);
+        item.append(materiaClauCell, subjectSelect, teacherSelect, dinantiaGroupSelect, deleteButton);
 
         return item;
       }
@@ -691,7 +729,8 @@
           groupName: '',
           subjectFullName: '',
           teacherFullName: '',
-          subjectDinantiaGroupAv: ''
+          subjectDinantiaGroupAv: '',
+          materiaClau: false
         }));
       }
 
@@ -708,7 +747,8 @@
           groupName: row.dataset.groupName,
           subjectFullName: row.querySelector('select[data-role="subject"]').value,
           teacherFullName: row.querySelector('select[data-role="teacher"]').value,
-          subjectDinantiaGroupAv: row.querySelector('select[data-role="dinantia-group"]').value
+          subjectDinantiaGroupAv: row.querySelector('select[data-role="dinantia-group"]').value,
+          materiaClau: row.querySelector('input[data-role="materia-clau"]').checked
         }));
 
         if (!rows.length && !deletedRowIds.size) {
@@ -923,7 +963,7 @@
           .withSuccessHandler(result => {
             stopEvaluationProgressPolling();
             setBusy(false);
-            setStatus(`Avaluació creada: ${result.sheetName} (${result.rowsWritten} files).`, 'success');
+            setStatus(`Avaluació creada: ${result.sheetName} (${result.rowsWritten} files, ${result.tutoriaRowsWritten} tutoria).`, 'success');
           })
           .withFailureHandler(error => {
             stopEvaluationProgressPolling();

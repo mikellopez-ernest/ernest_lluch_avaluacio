@@ -24,12 +24,18 @@ Data source:
 The page lets users select one group code at a time from `subjects_cache.group`.
 If a cache row contains a comma-separated group array such as `1F,2F`, that
 same row appears when either `1F` or `2F` is selected.
+Group lists keep first-appearance order from `subjects_cache`, reading rows top
+to bottom and comma-separated arrays left to right.
 
 When a group is selected, the page shows editable dropdown rows for:
 
+- `Tutoria`
 - `Assignatura`
 - `Professor`
 - `Grup d'alumnes per avaluar`
+
+`Tutoria` is a radio button backed by `subjects_cache.materia_clau`. Only one
+row can be selected as the key subject for each individual group code.
 
 Manual edits are saved directly to `Grades` -> `subjects_cache`.
 Rows can also be deleted from the editor and are removed from `subjects_cache` on save.
@@ -43,8 +49,9 @@ choose the group codes to evaluate, then creates:
 
 - a blank main evaluation sheet
 - a `{sheet_name}_config` sheet
+- a `{sheet_name}_tutoria` sheet
 - a row in `Grades` -> `avaluacions`
-- main-sheet rows by expanding `subjects_cache` through Dinantia students
+- main and tutoria rows by expanding `subjects_cache` through Dinantia students
 
 The create-evaluation modal lets users choose which groups to include.
 
@@ -54,9 +61,11 @@ During evaluation creation, the page polls progress by run ID and shows the late
 
 Generated evaluation config sheets include subject-evaluation colors in the
 `Color` column. Generated evaluation sheets copy the `subjects_cache.group`
-array, copy the teacher email next to the teacher name, fill `grup_tutoria`
-from each student's `TUTORIA` row, always include a `PI` checkbox column
-defaulting to false, and include a hidden `student_account_id` column.
+array and copy the teacher email next to the teacher name. Rows where
+`subjects_cache.materia_clau` is true are written to `{sheet_name}_tutoria`
+instead of the main sheet. The main sheet fills `grup_tutoria` from the matching
+tutoria row, always includes a `PI` checkbox column defaulting to false, and
+includes a hidden `student_account_id` column.
 
 `Grades` -> `avaluacions` stores `Estat = Creada` for new evaluations and validates the status cell against the configured workflow states.
 
@@ -76,7 +85,8 @@ When the cache is rebuilt, the script:
 6. Resolves group names from `Dinantia` -> `dinantia_2_dades_alumnes`.
 7. Resolves teacher names and emails from `Dades de professors` -> `Llista`.
 8. Resolves subject names from `Càrrega lectiva` -> `assignatures`.
-9. Rewrites `Grades` -> `subjects_cache` entirely.
+9. Sets `materia_clau` true for TUTORIA rows by default and false for other rows.
+10. Rewrites `Grades` -> `subjects_cache` entirely, including checkbox validation on `materia_clau`.
 
 The endpoint treats `subjects_cache.group` as a comma-separated array of group
 codes. New rows added from the editor use the currently selected group code.

@@ -77,7 +77,7 @@ function getConfigurationData() {
   assertAllowedUser_();
 
   const cacheRows = readSubjectsCacheRows_();
-  const groupNames = uniqueSorted_(cacheRows.reduce((groups, row) => (
+  const groupNames = uniqueInOrder_(cacheRows.reduce((groups, row) => (
     groups.concat(splitGroupCodes_(row.group))
   ), []));
   const subjects = uniqueSorted_(cacheRows.map(row => row.subjectFullName));
@@ -119,6 +119,7 @@ function saveSubjectsCacheEdits(payload) {
       .filter(row => !deletedRowIds.has(String(row.id)))
       .map(row => [String(row.id), row]));
     const newRows = [];
+    let selectedMateriaClauRow = null;
 
     rows.forEach(row => {
       const id = String(row.id || '').trim();
@@ -133,11 +134,17 @@ function saveSubjectsCacheEdits(payload) {
         teacherEmail: teacherInfo.email,
         matReduit: findSubjectCodeByName_(row.subjectFullName),
         subjectFullName: String(row.subjectFullName || '').trim(),
-        subjectDinantiaGroupAv: String(row.subjectDinantiaGroupAv || '').trim()
+        subjectDinantiaGroupAv: String(row.subjectDinantiaGroupAv || '').trim(),
+        materiaClau: parseBoolean_(row.materiaClau)
       };
 
       if (!updatedRow.subjectFullName && !updatedRow.teacherFullName && !updatedRow.subjectDinantiaGroupAv) {
         return;
+      }
+
+      if (updatedRow.materiaClau === true && splitGroupCodes_(updatedRow.group)
+        .some(groupCode => normalizeCode_(groupCode) === normalizeCode_(selectedGroupCode))) {
+        selectedMateriaClauRow = updatedRow;
       }
 
       if (id && rowsById.has(id)) {
@@ -147,7 +154,9 @@ function saveSubjectsCacheEdits(payload) {
       }
     });
 
-    writeSubjectsCacheRows_(Array.from(rowsById.values()).concat(newRows));
+    const updatedRows = Array.from(rowsById.values()).concat(newRows);
+    enforceMateriaClauForGroup_(updatedRows, selectedGroupCode, selectedMateriaClauRow);
+    writeSubjectsCacheRows_(normalizeMateriaClauByGroup_(updatedRows));
 
     return getConfigurationData();
   } finally {
@@ -209,12 +218,14 @@ function createEvaluation(payload) {
     const gradesSpreadsheet = openLogicalTableSpreadsheet_(GRADES_TABLE_NAME);
     const sheetName = normalizeSheetName_(evaluationName);
     const configSheetName = `${sheetName}_config`;
+    const tutoriaSheetName = `${sheetName}_tutoria`;
 
-    Logger.log('%s normalized sheetName="%s" configSheetName="%s"', logPrefix, sheetName, configSheetName);
-    updateEvaluationProgress_(runId, 'running', `Creant els fulls ${sheetName} i ${configSheetName}...`, {
+    Logger.log('%s normalized sheetName="%s" configSheetName="%s" tutoriaSheetName="%s"', logPrefix, sheetName, configSheetName, tutoriaSheetName);
+    updateEvaluationProgress_(runId, 'running', `Creant els fulls ${sheetName}, ${configSheetName} i ${tutoriaSheetName}...`, {
       stage: 'normalized_names',
       sheetName,
-      configSheetName
+      configSheetName,
+      tutoriaSheetName
     });
 
     if (gradesSpreadsheet.getSheetByName(sheetName)) {
@@ -227,9 +238,15 @@ function createEvaluation(payload) {
       throw new Error(`Ja existeix el full: ${configSheetName}`);
     }
 
+    if (gradesSpreadsheet.getSheetByName(tutoriaSheetName)) {
+      Logger.log('%s failed tutoria sheet already exists "%s"', logPrefix, tutoriaSheetName);
+      throw new Error(`Ja existeix el full: ${tutoriaSheetName}`);
+    }
+
     Logger.log('%s inserting sheets', logPrefix);
     const mainSheet = gradesSpreadsheet.insertSheet(sheetName);
     const configSheet = gradesSpreadsheet.insertSheet(configSheetName);
+    const tutoriaSheet = gradesSpreadsheet.insertSheet(tutoriaSheetName);
 
     Logger.log('%s registering evaluation', logPrefix);
     updateEvaluationProgress_(runId, 'running', "Registrant l'avaluació...", { stage: 'registering' });
@@ -237,15 +254,17 @@ function createEvaluation(payload) {
     Logger.log('%s writing config', logPrefix);
     updateEvaluationProgress_(runId, 'running', 'Escrivint la configuració...', { stage: 'writing_config' });
     writeEvaluationConfig_(configSheet, subjectItems, concepts);
-    Logger.log('%s populating main sheet', logPrefix);
+    Logger.log('%s populating main and tutoria sheets', logPrefix);
     updateEvaluationProgress_(runId, 'running', 'Llegint alumnes de Dinantia i generant files...', { stage: 'populating_main' });
-    const rowsWritten = populateEvaluationSheet_(mainSheet, subjectValues, concepts, logPrefix, runId, selectedGroups);
-    Logger.log('%s completed rowsWritten=%s', logPrefix, rowsWritten);
-    updateEvaluationProgress_(runId, 'complete', `Avaluació creada: ${sheetName} (${rowsWritten} files).`, {
+    const result = populateEvaluationSheets_(mainSheet, tutoriaSheet, subjectValues, concepts, logPrefix, runId, selectedGroups);
+    Logger.log('%s completed rowsWritten=%s tutoriaRowsWritten=%s', logPrefix, result.mainRowsWritten, result.tutoriaRowsWritten);
+    updateEvaluationProgress_(runId, 'complete', `Avaluació creada: ${sheetName} (${result.mainRowsWritten} files, ${result.tutoriaRowsWritten} tutoria).`, {
       stage: 'complete',
       sheetName,
       configSheetName,
-      rowsWritten
+      tutoriaSheetName,
+      rowsWritten: result.mainRowsWritten,
+      tutoriaRowsWritten: result.tutoriaRowsWritten
     });
 
     return {
@@ -253,7 +272,9 @@ function createEvaluation(payload) {
       evaluationName,
       sheetName,
       configSheetName,
-      rowsWritten,
+      tutoriaSheetName,
+      rowsWritten: result.mainRowsWritten,
+      tutoriaRowsWritten: result.tutoriaRowsWritten,
       status: 'evaluation created.'
     };
   } catch (error) {
@@ -309,7 +330,8 @@ function buildSubjectsCache() {
         teacherEmail,
         matReduit: row.matReduit,
         subjectFullName,
-        subjectDinantiaGroupAv: groupName
+        subjectDinantiaGroupAv: groupName,
+        materiaClau: normalizeCode_(subjectFullName || row.matReduit) === 'TUTORIA'
       };
     }).filter(row => row.groupName);
 
@@ -340,7 +362,8 @@ function readSubjectsCacheRows_() {
     teacherEmail: String(getField_(row, 'teacher_email') || '').trim(),
     matReduit: String(getField_(row, 'mat_reduit') || '').trim(),
     subjectFullName: String(getField_(row, 'subject_full_name') || '').trim(),
-    subjectDinantiaGroupAv: String(getField_(row, 'subject_dinantia_group_av') || '').trim()
+    subjectDinantiaGroupAv: String(getField_(row, 'subject_dinantia_group_av') || '').trim(),
+    materiaClau: parseBoolean_(getField_(row, 'materia_clau'))
   })).filter(row => row.groupName);
 }
 
@@ -354,10 +377,12 @@ function writeSubjectsCacheRows_(rows) {
     'teacher_email',
     'mat_reduit',
     'subject_full_name',
-    'subject_dinantia_group_av'
+    'subject_dinantia_group_av',
+    'materia_clau'
   ];
 
-  const sortedRows = rows
+  const normalizedRows = normalizeMateriaClauByGroup_(rows);
+  const sortedRows = normalizedRows
     .filter(row => String(row.groupName || '').trim())
     .sort((a, b) => (
       a.groupName.localeCompare(b.groupName, 'ca') ||
@@ -376,7 +401,8 @@ function writeSubjectsCacheRows_(rows) {
     row.teacherEmail || '',
     row.matReduit,
     row.subjectFullName,
-    row.subjectDinantiaGroupAv
+    row.subjectDinantiaGroupAv,
+    row.materiaClau === true
   ]);
 
   const gradesSpreadsheet = openLogicalTableSpreadsheet_(GRADES_TABLE_NAME);
@@ -387,6 +413,10 @@ function writeSubjectsCacheRows_(rows) {
 
   if (cacheValues.length > 0) {
     cacheSheet.getRange(2, 1, cacheValues.length, cacheHeaders.length).setValues(cacheValues);
+    const checkboxRule = SpreadsheetApp.newDataValidation()
+      .requireCheckbox()
+      .build();
+    cacheSheet.getRange(2, 10, cacheValues.length, 1).setDataValidation(checkboxRule);
   }
 
   cacheSheet.autoResizeColumns(1, cacheHeaders.length);
@@ -403,12 +433,53 @@ function groupRowsByGroupCode_(rows) {
         groupName: row.groupName,
         subjectFullName: row.subjectFullName,
         teacherFullName: row.teacherFullName,
-        subjectDinantiaGroupAv: row.subjectDinantiaGroupAv
+        subjectDinantiaGroupAv: row.subjectDinantiaGroupAv,
+        materiaClau: row.materiaClau === true
       });
     });
 
     return groups;
   }, {});
+}
+
+function enforceMateriaClauForGroup_(rows, selectedGroupCode, selectedRow) {
+  if (!selectedRow) return;
+
+  const selectedGroup = normalizeCode_(selectedGroupCode);
+  rows.forEach(row => {
+    if (!splitGroupCodes_(row.group).some(groupCode => normalizeCode_(groupCode) === selectedGroup)) return;
+
+    row.materiaClau = row === selectedRow;
+  });
+}
+
+function normalizeMateriaClauByGroup_(rows) {
+  const chosenRowByGroup = new Map();
+
+  rows.forEach(row => {
+    if (row.materiaClau !== true) return;
+
+    splitGroupCodes_(row.group).forEach(groupCode => {
+      const key = normalizeCode_(groupCode);
+      if (key && !chosenRowByGroup.has(key)) {
+        chosenRowByGroup.set(key, row);
+      }
+    });
+  });
+
+  rows.forEach(row => {
+    const groupCodes = splitGroupCodes_(row.group).map(normalizeCode_).filter(Boolean);
+    row.materiaClau = groupCodes.some(groupCode => chosenRowByGroup.get(groupCode) === row);
+  });
+
+  return rows;
+}
+
+function parseBoolean_(value) {
+  if (value === true) return true;
+
+  const normalized = String(value || '').trim().toUpperCase();
+  return normalized === 'TRUE' || normalized === 'VERDADERO' || normalized === 'CERT' || normalized === '1';
 }
 
 function updateEvaluationProgress_(runId, status, message, details) {
@@ -517,7 +588,7 @@ function writeEvaluationConfig_(sheet, subjectItems, concepts) {
   formatEvaluationConfigSheet_(sheet, headers.length);
 }
 
-function populateEvaluationSheet_(sheet, subjectValues, concepts, logPrefix, runId, selectedGroups) {
+function populateEvaluationSheets_(mainSheet, tutoriaSheet, subjectValues, concepts, logPrefix, runId, selectedGroups) {
   const selectedGroupSet = new Set((selectedGroups || []).map(group => normalizeCode_(group)));
   const cacheRows = readSubjectsCacheRows_()
     .filter(row => splitGroupCodes_(row.group).some(groupCode => selectedGroupSet.has(normalizeCode_(groupCode))));
@@ -532,7 +603,7 @@ function populateEvaluationSheet_(sheet, subjectValues, concepts, logPrefix, run
     dinantiaGroups: groupIds.length
   });
   const studentsByGroupId = fetchStudentsByGroupIds_(groupIds, logPrefix, runId);
-  const headers = [
+  const mainHeaders = [
     'group',
     'group_name',
     'teacher_full_name',
@@ -543,7 +614,20 @@ function populateEvaluationSheet_(sheet, subjectValues, concepts, logPrefix, run
     'PI',
     'Avaluació de la matèria'
   ].concat(concepts.map(concept => concept.name), ['student_account_id']);
-  const dataRows = [];
+  const tutoriaHeaders = [
+    'group',
+    'group_name',
+    'teacher_full_name',
+    'teacher_email',
+    'subject_full_name',
+    'student_full_name',
+    'grup_tutoria',
+    'student_account_id',
+    'Comentari_tutor',
+    'Butlletí_url'
+  ];
+  const mainRows = [];
+  const tutoriaRows = [];
 
   cacheRows.forEach(cacheRow => {
     const resolvedGroupIds = resolveDinantiaGroupIds_(cacheRow.subjectDinantiaGroupAv, groupAliasMap);
@@ -552,7 +636,23 @@ function populateEvaluationSheet_(sheet, subjectValues, concepts, logPrefix, run
     ), []));
 
     students.forEach(student => {
-      dataRows.push([
+      if (cacheRow.materiaClau === true) {
+        tutoriaRows.push([
+          cacheRow.group,
+          cacheRow.groupName,
+          cacheRow.teacherFullName,
+          cacheRow.teacherEmail,
+          cacheRow.subjectFullName,
+          student.name,
+          '',
+          student.id,
+          '',
+          ''
+        ]);
+        return;
+      }
+
+      mainRows.push([
         cacheRow.group,
         cacheRow.groupName,
         cacheRow.teacherFullName,
@@ -568,24 +668,34 @@ function populateEvaluationSheet_(sheet, subjectValues, concepts, logPrefix, run
     });
   });
 
-  fillTutoriaGroups_(dataRows, headers);
-  const values = [headers].concat(dataRows);
+  fillTutoriaGroupsFromTutoriaRows_(mainRows, mainHeaders, tutoriaRows, tutoriaHeaders);
+  fillTutoriaGroupsFromTutoriaRows_(tutoriaRows, tutoriaHeaders, tutoriaRows, tutoriaHeaders);
+  const mainValues = [mainHeaders].concat(mainRows);
+  const tutoriaValues = [tutoriaHeaders].concat(tutoriaRows);
 
-  Logger.log('%s populate generatedRows=%s', logPrefix, Math.max(values.length - 1, 0));
-  updateEvaluationProgress_(runId, 'running', `Escrivint ${Math.max(values.length - 1, 0)} files al full...`, {
+  Logger.log('%s populate generatedRows=%s tutoriaRows=%s', logPrefix, mainRows.length, tutoriaRows.length);
+  updateEvaluationProgress_(runId, 'running', `Escrivint ${mainRows.length} files al full principal i ${tutoriaRows.length} files de tutoria...`, {
     stage: 'writing_main',
-    generatedRows: Math.max(values.length - 1, 0)
+    generatedRows: mainRows.length,
+    tutoriaRows: tutoriaRows.length
   });
 
-  sheet.clearContents();
-  sheet.getRange(1, 1, values.length, headers.length).setValues(values);
-  formatEvaluationMainSheet_(sheet, headers.length, values.length);
+  mainSheet.clearContents();
+  mainSheet.getRange(1, 1, mainValues.length, mainHeaders.length).setValues(mainValues);
+  formatEvaluationMainSheet_(mainSheet, mainHeaders.length, mainValues.length);
 
-  if (values.length > 1) {
-    applyEvaluationValidations_(sheet, values.length - 1, subjectValues, concepts);
+  if (mainValues.length > 1) {
+    applyEvaluationValidations_(mainSheet, mainValues.length - 1, subjectValues, concepts);
   }
 
-  return values.length - 1;
+  tutoriaSheet.clearContents();
+  tutoriaSheet.getRange(1, 1, tutoriaValues.length, tutoriaHeaders.length).setValues(tutoriaValues);
+  formatTutoriaSheet_(tutoriaSheet, tutoriaHeaders.length, tutoriaValues.length);
+
+  return {
+    mainRowsWritten: mainRows.length,
+    tutoriaRowsWritten: tutoriaRows.length
+  };
 }
 
 function formatEvaluationConfigSheet_(sheet, columnCount) {
@@ -622,6 +732,28 @@ function formatEvaluationMainSheet_(sheet, columnCount, rowCount) {
   sheet.hideColumns(columnCount);
 }
 
+function formatTutoriaSheet_(sheet, columnCount, rowCount) {
+  sheet.setFrozenRows(1);
+  sheet.getRange(1, 1, 1, columnCount)
+    .setFontWeight('bold')
+    .setBackground('#e8f0fe')
+    .setFontColor('#202124');
+  sheet.getRange(1, 1, rowCount, columnCount)
+    .setVerticalAlignment('middle')
+    .setWrap(true);
+  sheet.autoResizeColumns(1, columnCount);
+  sheet.setColumnWidth(1, 150);
+  sheet.setColumnWidth(2, 150);
+  sheet.setColumnWidth(3, 220);
+  sheet.setColumnWidth(4, 220);
+  sheet.setColumnWidth(5, 220);
+  sheet.setColumnWidth(6, 220);
+  sheet.setColumnWidth(7, 150);
+  sheet.setColumnWidth(8, 150);
+  sheet.setColumnWidth(9, 260);
+  sheet.setColumnWidth(10, 260);
+}
+
 function applyEvaluationValidations_(sheet, dataRowCount, subjectValues, concepts) {
   const checkboxRule = SpreadsheetApp.newDataValidation()
     .requireCheckbox()
@@ -646,22 +778,22 @@ function applyEvaluationValidations_(sheet, dataRowCount, subjectValues, concept
   });
 }
 
-function fillTutoriaGroups_(rows, headers) {
+function fillTutoriaGroupsFromTutoriaRows_(rows, headers, tutoriaRows, tutoriaHeaders) {
   const indexes = {
-    groupName: headers.indexOf('group_name'),
-    subjectFullName: headers.indexOf('subject_full_name'),
     studentId: headers.indexOf('student_account_id'),
     grupTutoria: headers.indexOf('grup_tutoria')
   };
-
+  const tutoriaIndexes = {
+    studentId: tutoriaHeaders.indexOf('student_account_id'),
+    groupName: tutoriaHeaders.indexOf('group_name')
+  };
   const tutoriaByStudentId = new Map();
 
-  rows.forEach(row => {
-    const studentId = String(row[indexes.studentId] || '').trim();
+  tutoriaRows.forEach(row => {
+    const studentId = String(row[tutoriaIndexes.studentId] || '').trim();
     if (!studentId || tutoriaByStudentId.has(studentId)) return;
-    if (normalizeCode_(row[indexes.subjectFullName]) !== 'TUTORIA') return;
 
-    const tutoriaGroup = String(row[indexes.groupName] || '').trim();
+    const tutoriaGroup = String(row[tutoriaIndexes.groupName] || '').trim();
     if (tutoriaGroup) {
       tutoriaByStudentId.set(studentId, tutoriaGroup);
     }
@@ -1330,6 +1462,18 @@ function readSubjectCatalogRows_(sheet) {
 function uniqueSorted_(values) {
   return Array.from(new Set(values.map(value => String(value || '').trim()).filter(Boolean)))
     .sort((a, b) => a.localeCompare(b, 'ca'));
+}
+
+function uniqueInOrder_(values) {
+  const seen = new Set();
+
+  return values.map(value => String(value || '').trim())
+    .filter(value => {
+      if (!value || seen.has(value)) return false;
+
+      seen.add(value);
+      return true;
+    });
 }
 
 function openLogicalTableSpreadsheet_(logicalTableName) {

@@ -91,6 +91,10 @@ left arrow is disabled on the first item and the right arrow is disabled on the
 last item. Arrow navigation is client-side and uses the already-loaded selector
 values.
 
+The layout should be vertically compact so the title, selectors, table, and
+tutor comment field can fit together on screen. Table rows use reduced padding
+and compact controls compared with the teacher panel.
+
 ## Data Rules
 
 Generated evaluation sheets are read from `Grades -> {sheet_name}`.
@@ -151,9 +155,42 @@ The config sheet `{sheet_name}_config` is read like the teacher panel: column B
 contains subject-evaluation options, optional column C named `Color` contains
 colors, and concept columns start after that.
 
+Below the table, the UI shows a text area titled `Comentari del tutor`. It is
+approximately three text rows tall. The field is student-scoped: it is enabled
+when the table is filtered by one student and disabled when the table is
+filtered by one subject.
+
+Tutor comments are stored in a companion sheet for the selected evaluation:
+
+`{sheet_name}_tutoria`
+
+Example: if the evaluation sheet is `avaluacio_1`, tutor comments are stored in
+`avaluacio_1_tutoria`.
+
+The tutoria sheet has one row per student and these columns:
+
+| Column | Purpose |
+| --- | --- |
+| `group` | Same generated metadata as the evaluation sheet. |
+| `group_name` | Same generated metadata as the evaluation sheet. |
+| `teacher_full_name` | Same generated metadata as the evaluation sheet. |
+| `teacher_email` | Same generated metadata as the evaluation sheet. |
+| `subject_full_name` | Same generated metadata as the evaluation sheet. |
+| `student_full_name` | Student display name. |
+| `grup_tutoria` | Tutoring group used for visibility/filtering. |
+| `student_account_id` | Stable student identifier shared with the evaluation sheet. |
+| `Comentari_tutor` | Value edited in the `Comentari del tutor` textarea. |
+| `Butlletí_url` | Report-card URL. |
+
+When loading a group, the endpoint also reads `{sheet_name}_tutoria` and returns
+the tutor comments for that visible group. The browser keeps them cached by
+`student_account_id` and by `student_full_name`, so changing between students
+does not require another server call.
+
 ## Save Rules
 
-The endpoint saves only dirty rows.
+The endpoint saves only dirty table rows and the dirty tutor comment, if
+present.
 
 For performance, saves must focus only on the rows currently visible on screen,
 which are expected to be no more than about 30 rows. They must write only dirty
@@ -175,6 +212,7 @@ Writable fields are:
 - `PI`
 - `Avaluació de la matèria`
 - concept columns after `Avaluació de la matèria`, excluding `student_account_id`
+- `Comentari_tutor` in `{sheet_name}_tutoria` when a student is selected
 
 Column indexes are calculated from headers, not fixed letters.
 
@@ -182,6 +220,15 @@ After saving, the backend returns only the updated row payloads as `updatedRows`
 The browser merges those rows into the already-loaded group-filtered cache and
 the currently rendered table. The save response must not force a full sheet
 reload.
+
+Tutor-comment saves are optimized separately from table-row saves. If only the
+comment changed, the endpoint skips the generated evaluation sheet and writes
+only the matched `Comentari_tutor` cell in `{sheet_name}_tutoria`. It locates
+the student using `student_account_id` first because that is stable and shared
+with the evaluation sheet. If no account id is available, it falls back to
+`student_full_name`. Before writing `Comentari_tutor`, the backend validates
+that the located tutoria row still matches the selected student and visible
+`grup_tutoria`.
 
 ## Public Functions
 
@@ -192,6 +239,6 @@ reload.
 | `getAvSessionData` | Loads active-user context, visible groups, and `Mode junta` evaluations. |
 | `getAvSessionEvaluationData` | Loads students and subjects for a selected evaluation and group. |
 | `getAvSessionRows` | Loads table rows for the selected student or subject. |
-| `saveAvSessionRows` | Saves dirty editable values. |
+| `saveAvSessionRows` | Saves dirty editable row values and/or the selected student's tutor comment. |
 
 All implementation helpers should use a trailing underscore.
