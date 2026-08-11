@@ -58,13 +58,19 @@ today in `Europe/Madrid`.
 
 The endpoint reads `Grades -> avaluacions`.
 
-Only rows where `Estat` is exactly:
+Rows are available when `Estat` is exactly one of:
 
 ```text
 Mode junta
+Avaluació professors
 ```
 
-are available.
+The selected evaluation state controls editability:
+
+| State | Behavior |
+| --- | --- |
+| `Mode junta` | Grades and `Comentari_tutor` are editable. |
+| `Avaluació professors` | Students and subjects are visible, but grade fields are disabled. Only `Comentari_tutor` is editable. |
 
 ## UI Flow
 
@@ -72,7 +78,7 @@ The first row has four horizontal selectors:
 
 | Selector | Source |
 | --- | --- |
-| `Avaluació` | `Grades -> avaluacions` rows in `Mode junta`. |
+| `Avaluació` | `Grades -> avaluacions` rows in `Mode junta` or `Avaluació professors`. |
 | `Grup` | Visible Dinantia group IDs resolved from the active user. |
 | `Alumne` | Unique students from evaluation rows where `grup_tutoria` contains the selected group ID. |
 | `Matèria` | Unique subjects from evaluation rows where `grup_tutoria` contains the selected group ID. |
@@ -90,6 +96,13 @@ The arrows navigate through the active selector (`Alumne` or `Matèria`). The
 left arrow is disabled on the first item and the right arrow is disabled on the
 last item. Arrow navigation is client-side and uses the already-loaded selector
 values.
+
+The page has two floating bubble buttons in the bottom-right corner:
+
+| Button | Behavior |
+| --- | --- |
+| Save | Saves dirty grade rows and/or the dirty tutor comment. |
+| Print | Generates and downloads a PDF report for the selected student. It is enabled only in student mode. |
 
 The layout should be vertically compact so the title, selectors, table, and
 tutor comment field can fit together on screen. Table rows use reduced padding
@@ -125,6 +138,10 @@ subject and group.
 After the group-filtered rows are loaded, changing between students, changing
 between subjects, and using the arrow buttons must filter locally in the browser
 without additional Apps Script calls.
+
+When the selected evaluation is in `Avaluació professors`, all grade controls in
+the table are rendered disabled. The user can still navigate the same visible
+students and subjects, and can still edit `Comentari del tutor` in student mode.
 
 ## Table Columns
 
@@ -202,16 +219,21 @@ calls.
 
 Before writing, the backend re-checks:
 
-- the evaluation is still in `Mode junta`
+- the evaluation is still in a session-available state (`Mode junta` or
+  `Avaluació professors`)
 - the selected group is still visible to the active user
 - every edited row still belongs to the selected group
 - every edited row still belongs to the selected student or subject
 
+Dirty grade rows are accepted only while the evaluation is in `Mode junta`. If
+the evaluation is in `Avaluació professors`, the backend rejects grade-row
+writes even if a client sends them.
+
 Writable fields are:
 
-- `PI`
-- `Avaluació de la matèria`
-- concept columns after `Avaluació de la matèria`, excluding `student_account_id`
+- `PI` only in `Mode junta`
+- `Avaluació de la matèria` only in `Mode junta`
+- concept columns after `Avaluació de la matèria`, excluding `student_account_id`, only in `Mode junta`
 - `Comentari_tutor` in `{sheet_name}_tutoria` when a student is selected
 
 Column indexes are calculated from headers, not fixed letters.
@@ -230,15 +252,66 @@ with the evaluation sheet. If no account id is available, it falls back to
 that the located tutoria row still matches the selected student and visible
 `grup_tutoria`.
 
+## Student PDF Report
+
+When a student is selected, the print bubble button generates a PDF report in
+Catalan and downloads it in the browser.
+
+The report architecture is split for manual editing:
+
+| File | Responsibility |
+| --- | --- |
+| `scripts/av_session/src/PdfReport.html` | Human-editable PDF layout, text, CSS, page margins, and pagination rules. |
+| `scripts/av_session/src/Code.js` | Permission checks, data validation, report view-model preparation, PDF conversion, and download payload. |
+
+The PDF uses compact typography, approximately two points smaller than the web
+table. Top and bottom page margins are compact. Subject sections may split
+across pages, but individual evaluation item lines should not be split. Flowing
+evaluation item text and tutor-comment text are justified. The tutor-comment
+section should not split across pages. The PDF includes:
+
+1. A header table with two columns.
+2. In the left header column, the logo from
+   `scripts/av_session/img/logo_nou_transp.png`, embedded in the Apps Script
+   code as base64 and passed to `PdfReport.html` so the deployed web app can
+   render it during PDF generation. The header is compact and uses only a
+   bottom border.
+3. In the right header column, the text:
+
+```text
+Institut Ernest Lluch i Martín
+Cunit
+```
+
+4. Student data: full name, group, and evaluation name.
+5. A subject list, not a table. Each subject is shown as a heading. If `PI` is
+   true, the subject heading adds `(PI)`. Under each subject, `Avaluació de la
+   matèria` and the non-empty evaluation items are shown as indented lines.
+6. `Comentari del tutor`.
+7. Place and date in this format:
+
+```text
+Cunit, a dd de mm de yyyy
+```
+
+The month name is written in Catalan.
+
+The PDF generator uses the rows currently visible in the browser so unsaved
+screen edits can appear in the downloaded report. Before generating the PDF,
+the backend still verifies that the selected evaluation is available, the group
+is visible to the active user, and every submitted row still belongs to the
+selected student and group.
+
 ## Public Functions
 
 | Function | Purpose |
 | --- | --- |
 | `doGet` | Web app entrypoint. |
 | `grantPermissionsManually` | Manual authorization helper for the owner. |
-| `getAvSessionData` | Loads active-user context, visible groups, and `Mode junta` evaluations. |
+| `getAvSessionData` | Loads active-user context, visible groups, and session-available evaluations. |
 | `getAvSessionEvaluationData` | Loads students and subjects for a selected evaluation and group. |
 | `getAvSessionRows` | Loads table rows for the selected student or subject. |
 | `saveAvSessionRows` | Saves dirty editable row values and/or the selected student's tutor comment. |
+| `createAvSessionStudentReportPdf` | Generates a downloadable PDF report for the selected student. |
 
 All implementation helpers should use a trailing underscore.

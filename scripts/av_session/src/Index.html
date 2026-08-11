@@ -208,10 +208,16 @@
         margin-top: 8px;
       }
 
-      .save-bubble {
+      .bubble-actions {
         position: fixed;
         right: 24px;
         bottom: 24px;
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .bubble-button {
         width: 58px;
         height: 58px;
         border: 0;
@@ -224,7 +230,13 @@
         cursor: pointer;
       }
 
-      .save-bubble:disabled {
+      .bubble-button svg {
+        width: 28px;
+        height: 28px;
+        vertical-align: middle;
+      }
+
+      .bubble-button:disabled {
         cursor: not-allowed;
         opacity: 0.55;
       }
@@ -267,7 +279,7 @@
       }
 
       body.busy main,
-      body.busy .save-bubble {
+      body.busy .bubble-actions {
         filter: grayscale(0.35);
         opacity: 0.38;
         pointer-events: none;
@@ -339,7 +351,14 @@
       </section>
     </main>
 
-    <button id="save-button" class="save-bubble" type="button" aria-label="Desar canvis" title="Desar canvis" disabled>💾</button>
+    <div class="bubble-actions">
+      <button id="save-button" class="bubble-button" type="button" aria-label="Desar canvis" title="Desar canvis" disabled>💾</button>
+      <button id="print-button" class="bubble-button" type="button" aria-label="Descarregar butlletí en PDF" title="Descarregar butlletí en PDF" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6zM18 13h.01"/>
+        </svg>
+      </button>
+    </div>
 
     <div id="overlay" class="overlay">
       <div class="loader" role="status" aria-live="polite" aria-busy="true">
@@ -367,6 +386,7 @@
       document.getElementById('student-selector').addEventListener('change', handleStudentChange);
       document.getElementById('subject-selector').addEventListener('change', handleSubjectChange);
       document.getElementById('save-button').addEventListener('click', saveChanges);
+      document.getElementById('print-button').addEventListener('click', downloadStudentReport);
       document.getElementById('prev-button').addEventListener('click', () => navigateSelection(-1));
       document.getElementById('next-button').addEventListener('click', () => navigateSelection(1));
       document.getElementById('tutor-comment').addEventListener('input', handleTutorCommentInput);
@@ -480,7 +500,7 @@
         studentSelector.disabled = true;
         subjectSelector.disabled = true;
         resetTutorComment();
-        updateSaveButton();
+        updateActionButtons();
       }
 
       function renderDetailSelectors() {
@@ -548,6 +568,7 @@
           selectedStudent,
           selectedSubject,
           rows,
+          gradeFieldsEditable: state.evaluationData.gradeFieldsEditable !== false,
           subjectEvaluationOptions: state.evaluationData.subjectEvaluationOptions || [],
           subjectEvaluationColors: state.evaluationData.subjectEvaluationColors || {},
           conceptColumns: state.evaluationData.conceptColumns || [],
@@ -568,7 +589,7 @@
 
         if (!state.rowsData || !(state.rowsData.rows || []).length) {
           tableWrap.hidden = true;
-          updateSaveButton();
+          updateActionButtons();
           return;
         }
 
@@ -584,7 +605,7 @@
         });
         tableWrap.hidden = false;
         updateNavigationButtons();
-        updateSaveButton();
+        updateActionButtons();
       }
 
       function syncTutorCommentForSelection() {
@@ -654,6 +675,7 @@
       }
 
       function renderDataRow(row, primaryHeader, conceptColumns) {
+        const gradeFieldsEditable = areGradeFieldsEditable();
         const tr = document.createElement('tr');
         tr.dataset.sheetRow = row.sheetRow;
         if (state.dirtyRows.has(String(row.sheetRow))) {
@@ -671,7 +693,10 @@
         piInput.type = 'checkbox';
         piInput.checked = row.pi === true;
         piInput.dataset.role = 'pi';
-        piInput.addEventListener('change', () => markDirty(tr));
+        setGradeInputState(piInput, gradeFieldsEditable);
+        if (gradeFieldsEditable) {
+          piInput.addEventListener('change', () => markDirty(tr));
+        }
         piCell.appendChild(piInput);
         tr.appendChild(piCell);
 
@@ -682,10 +707,13 @@
           row.subjectEvaluation
         );
         subjectEvaluationSelect.classList.add('subject-evaluation-select');
+        setGradeInputState(subjectEvaluationSelect, gradeFieldsEditable);
         applyEvaluationColor(subjectEvaluationSelect, row.subjectEvaluation);
-        subjectEvaluationSelect.addEventListener('change', event => {
-          applyEvaluationColor(event.target, event.target.value);
-        });
+        if (gradeFieldsEditable) {
+          subjectEvaluationSelect.addEventListener('change', event => {
+            applyEvaluationColor(event.target, event.target.value);
+          });
+        }
         subjectCell.appendChild(subjectEvaluationSelect);
         tr.appendChild(subjectCell);
 
@@ -695,11 +723,21 @@
           const input = concept.options && concept.options.length
             ? createSelectInput(`concept:${concept.header}`, concept.options, value)
             : createTextInput(`concept:${concept.header}`, value);
+          setGradeInputState(input, gradeFieldsEditable);
           td.appendChild(input);
           tr.appendChild(td);
         });
 
         return tr;
+      }
+
+      function areGradeFieldsEditable() {
+        return !state.rowsData || state.rowsData.gradeFieldsEditable !== false;
+      }
+
+      function setGradeInputState(input, editable) {
+        input.disabled = !editable;
+        input.dataset.locked = editable ? 'false' : 'true';
       }
 
       function createSelectInput(role, options, value) {
@@ -783,6 +821,59 @@
           });
       }
 
+      function downloadStudentReport() {
+        if (!state.selectedEvaluation || !state.selectedGroup || !state.rowsData || state.rowsData.mode !== 'student') return;
+
+        const selectedStudent = document.getElementById('student-selector').value;
+        const visibleRows = collectVisibleReportRows();
+        if (!selectedStudent || !visibleRows.length) return;
+
+        setBusy(true, 'Generant el PDF...');
+        google.script.run
+          .withSuccessHandler(file => {
+            setBusy(false);
+            triggerPdfDownload(file);
+            setStatus('Butlletí generat.', 'success');
+          })
+          .withFailureHandler(error => {
+            setBusy(false);
+            showError(error);
+          })
+          .createAvSessionStudentReportPdf({
+            sheetName: state.selectedEvaluation,
+            group: state.selectedGroup,
+            student: selectedStudent,
+            rows: visibleRows,
+            tutorComment: document.getElementById('tutor-comment').value
+          });
+      }
+
+      function collectVisibleReportRows() {
+        return Array.from(document.querySelectorAll('#table-body tr')).map(tr => {
+          const sheetRow = Number(tr.dataset.sheetRow);
+          const modelRow = (state.rowsData.rows || []).find(row => Number(row.sheetRow) === sheetRow) || {};
+          const payload = collectRowPayload(tr);
+          return {
+            sheetRow,
+            subjectFullName: modelRow.subjectFullName || '',
+            pi: payload.pi,
+            subjectEvaluation: payload.subjectEvaluation,
+            concepts: payload.concepts
+          };
+        });
+      }
+
+      function triggerPdfDownload(file) {
+        if (!file || !file.base64) throw new Error('No s\'ha pogut generar el PDF.');
+
+        const link = document.createElement('a');
+        link.href = `data:${file.mimeType || 'application/pdf'};base64,${file.base64}`;
+        link.download = file.fileName || 'butlleti.pdf';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
+
       function mergeSavedRowsIntoEvaluationData(rows) {
         if (!state.evaluationData || !Array.isArray(state.evaluationData.rows)) return;
 
@@ -821,7 +912,7 @@
         document.getElementById('table-wrap').hidden = true;
         resetTutorComment();
         updateNavigationButtons();
-        updateSaveButton();
+        updateActionButtons();
       }
 
       function navigateSelection(delta) {
@@ -875,6 +966,19 @@
           document.body.classList.contains('busy');
       }
 
+      function updatePrintButton() {
+        document.getElementById('print-button').disabled =
+          document.body.classList.contains('busy') ||
+          !state.rowsData ||
+          state.rowsData.mode !== 'student' ||
+          !(state.rowsData.rows || []).length;
+      }
+
+      function updateActionButtons() {
+        updateSaveButton();
+        updatePrintButton();
+      }
+
       function setBusy(isBusy, message) {
         document.body.classList.toggle('busy', isBusy);
         document.getElementById('overlay').hidden = !isBusy;
@@ -884,6 +988,8 @@
         Array.from(document.querySelectorAll('select, input, textarea, button')).forEach(element => {
           if (element.id === 'save-button') {
             element.disabled = isBusy || (!state.dirtyRows.size && !state.tutorCommentDirty);
+          } else if (element.id === 'print-button') {
+            element.disabled = isBusy || !state.rowsData || state.rowsData.mode !== 'student' || !(state.rowsData.rows || []).length;
           } else {
             element.disabled = isBusy || element.dataset.locked === 'true';
           }

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <style>
+      @page { margin: 12mm 18mm; }
+
+      body {
+        margin: 0;
+        color: #202124;
+        font-family: Arial, sans-serif;
+        font-size: 8.5pt;
+        line-height: 1.35;
+      }
+
+      .header {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 9px;
+        border-bottom: 1px solid #d0d7de;
+      }
+
+      .header td {
+        width: 50%;
+        padding: 5px 8px;
+        vertical-align: middle;
+      }
+
+      .logo {
+        max-width: 150px;
+        max-height: 35px;
+      }
+
+      .school {
+        text-align: right;
+        font-size: 11pt;
+        font-weight: 700;
+        white-space: pre-line;
+      }
+
+      h1 {
+        margin: 0 0 10px;
+        font-size: 14pt;
+      }
+
+      .student-data {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 14px;
+      }
+
+      .student-data th,
+      .student-data td {
+        border: 1px solid #d0d7de;
+        padding: 4px 6px;
+        text-align: left;
+      }
+
+      .student-data th {
+        width: 28%;
+        background: #eef2f7;
+      }
+
+      .subjects {
+        margin-bottom: 16px;
+      }
+
+      .subject-block {
+        margin: 0 0 10px;
+      }
+
+      .subject-block h2 {
+        margin: 0 0 3px;
+        font-size: 10.5pt;
+      }
+
+      .evaluation-item {
+        margin-left: 18px;
+        padding-left: 8px;
+        text-align: justify;
+        page-break-inside: avoid;
+      }
+
+      .evaluation-item span {
+        font-weight: 700;
+      }
+
+      .evaluation-item.empty {
+        color: #5f6368;
+        font-style: italic;
+      }
+
+      .comment-block {
+        page-break-inside: avoid;
+      }
+
+      .comment-title {
+        margin: 0 0 6px;
+        font-weight: 700;
+      }
+
+      .comment {
+        min-height: 52px;
+        border: 1px solid #d0d7de;
+        padding: 8px;
+        text-align: justify;
+        white-space: pre-wrap;
+      }
+
+      .date {
+        margin-top: 24px;
+        text-align: right;
+      }
+    </style>
+  </head>
+  <body>
+    <table class="header">
+      <tr>
+        <td><img class="logo" src="<?!= report.logoDataUri ?>" alt="Institut Ernest Lluch i Martín"></td>
+        <td class="school">Institut Ernest Lluch i Martín
+Cunit</td>
+      </tr>
+    </table>
+
+    <h1>Butlletí de sessió d'avaluació</h1>
+
+    <table class="student-data">
+      <tr><th>Alumne/a</th><td><?= report.studentFullName ?></td></tr>
+      <tr><th>Grup</th><td><?= report.group ?></td></tr>
+      <tr><th>Avaluació</th><td><?= report.evaluationName ?></td></tr>
+    </table>
+
+    <div class="subjects">
+      <? report.subjects.forEach(function(subject) { ?>
+        <section class="subject-block">
+          <h2><?= subject.name ?><? if (subject.pi) { ?> (PI)<? } ?></h2>
+          <? if (subject.items.length) { ?>
+            <? subject.items.forEach(function(item) { ?>
+              <div class="evaluation-item"><span><?= item.label ?>:</span> <?= item.value ?></div>
+            <? }); ?>
+          <? } else { ?>
+            <div class="evaluation-item empty">Sense ítems informats.</div>
+          <? } ?>
+        </section>
+      <? }); ?>
+    </div>
+
+    <section class="comment-block">
+      <div class="comment-title">Comentari del tutor</div>
+      <div class="comment"><?= report.tutorComment ?></div>
+    </section>
+
+    <div class="date"><?= report.dateText ?></div>
+  </body>
+</html>
