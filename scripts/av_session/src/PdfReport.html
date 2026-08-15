@@ -57,8 +57,16 @@
       }
 
       .student-data th {
-        width: 28%;
+        width: 18%;
         background: #eef2f7;
+      }
+
+      .student-data td {
+        width: 82%;
+      }
+
+      .student-data .nowrap {
+        white-space: nowrap;
       }
 
       .subjects {
@@ -126,7 +134,7 @@ Cunit</td>
 
     <table class="student-data">
       <tr><th>Alumne/a</th><td><?= report.studentFullName ?></td></tr>
-      <tr><th>Grup</th><td><?= report.group ?></td></tr>
+      <tr><th>Grup</th><td class="nowrap"><?= report.group ?></td></tr>
       <tr><th>Avaluació</th><td><?= report.evaluationName ?></td></tr>
     </table>
 

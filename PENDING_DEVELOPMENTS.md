@@ -17,6 +17,8 @@ This file tracks future work and open decisions only. Implemented specifications
   page while saving.
 - The endpoint can create evaluation sheets from `subjects_cache`.
 - Evaluation creation lets users choose which group codes are included.
+- Evaluation config sheets store subject-evaluation full names, reduced names,
+  and colors.
 - Dinantia student expansion uses `accounts.groups.member` string memberships.
 - Generated main evaluation sheets include `group`, `teacher_email`,
   `grup_tutoria`, `PI`, and hidden `student_account_id` columns.

@@ -131,16 +131,20 @@ The endpoint reads `{sheet_name}_config` for dropdown values.
 | Column | Purpose |
 | --- | --- |
 | B | Values for `Avaluació de la matèria`. |
-| C | Optional `Color` column with hex colors for the subject-evaluation values in column B. |
-| D onward | Concept names and optional dropdown values. |
+| C | Optional `avaluacio_reduit` column with reduced labels for the subject-evaluation values in column B. |
+| D | Optional `Color` column with hex colors for the subject-evaluation values in column B. |
+| E onward | Concept names and optional dropdown values. |
 
-New config sheets have `Color` as the header in column C. Old config sheets may
-not. The backend must inspect the column C header:
+New config sheets have `avaluacio_reduit` as the header in column C and `Color`
+as the header in column D. Old config sheets may not. The backend must inspect
+the config headers:
 
-- If column C is `Color`, read subject-evaluation colors from C and treat
-  concept columns as starting at D.
-- If column C is not `Color`, treat the sheet as the old layout and concept
-  columns as starting at C.
+- If column C is `avaluacio_reduit` and column D is `Color`, read reduced
+  labels from C, colors from D, and treat concept columns as starting at E.
+- If column C is `Color`, treat the sheet as the previous color-only layout:
+  read colors from C and treat concept columns as starting at D.
+- If column C is neither `avaluacio_reduit` nor `Color`, treat the sheet as the
+  oldest layout and concept columns as starting at C.
 
 Color values are six-digit hex strings, for example `#FFFFFF` or `#2F80ED`.
 The default color is `#FFFFFF`.
@@ -149,17 +153,24 @@ For custom concept columns:
 
 - Show all remaining main-sheet headers after `Avaluació de la matèria` exactly as they appear.
 - Exclude `student_account_id`.
-- Ignore the config `Color` column when resolving custom concept options.
+- Ignore the config `avaluacio_reduit` and `Color` columns when resolving custom concept options.
 - If the matching config column has values, render a dropdown.
 - If the matching config column has no values, render an open text field.
 
 The backend must expose the subject-evaluation color map with the evaluation
-data as `subjectEvaluationColors`. Example:
+data as `subjectEvaluationColors`. It must also expose reduced labels as
+`subjectEvaluationReducedNames`. Example:
 
 ```json
 {
-  "No assolit": "#FFFFFF",
-  "Assoliment satisfactori": "#A7F3D0"
+  "subjectEvaluationReducedNames": {
+    "No assolit": "NA",
+    "Assoliment satisfactori": "AS"
+  },
+  "subjectEvaluationColors": {
+    "No assolit": "#FFFFFF",
+    "Assoliment satisfactori": "#A7F3D0"
+  }
 }
 ```
 

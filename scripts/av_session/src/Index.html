@@ -37,6 +37,8 @@
         margin: 0;
         font-size: 16px;
         letter-spacing: 0;
+        overflow-x: auto;
+        white-space: nowrap;
       }
 
       .subtitle {
@@ -111,6 +113,13 @@
         display: none;
       }
 
+      label[hidden],
+      .bubble-button[hidden],
+      .nav-arrow[hidden],
+      .tutor-comment[hidden] {
+        display: none;
+      }
+
       .table-wrap {
         overflow-x: auto;
         border-top: 1px solid #d8dee8;
@@ -172,6 +181,12 @@
       td.primary-cell {
         min-width: 220px;
         font-weight: 600;
+        white-space: nowrap;
+      }
+
+      tr.closed-row td.primary-cell {
+        width: 100%;
+        min-width: 360px;
       }
 
       td.checkbox-cell,
@@ -180,6 +195,22 @@
         min-width: 38px;
         max-width: 38px;
         text-align: center;
+      }
+
+      td.action-cell {
+        min-width: 92px;
+        width: 92px;
+        text-align: center;
+      }
+
+      .table-link {
+        color: #0b57d0;
+        font-weight: 700;
+        text-decoration: none;
+      }
+
+      .table-link:hover {
+        text-decoration: underline;
       }
 
       tr.dirty td {
@@ -269,6 +300,10 @@
         text-align: center;
       }
 
+      #overlay-message {
+        white-space: pre-line;
+      }
+
       .spinner {
         width: 48px;
         height: 48px;
@@ -312,21 +347,21 @@
       <div id="status" class="status"></div>
 
       <section id="toolbar" class="toolbar" hidden>
-        <label for="evaluation-selector">
+        <label id="evaluation-label" for="evaluation-selector">
           Avaluació
           <select id="evaluation-selector"></select>
         </label>
-        <label for="group-selector">
+        <label id="group-label" for="group-selector">
           Grup
           <select id="group-selector"></select>
         </label>
-        <label for="student-selector">
+        <label id="student-label" for="student-selector">
           Alumne
           <select id="student-selector" disabled>
             <option value="">Selecciona un alumne...</option>
           </select>
         </label>
-        <label for="subject-selector">
+        <label id="subject-label" for="subject-selector">
           Matèria
           <select id="subject-selector" disabled>
             <option value="">Selecciona una matèria...</option>
@@ -335,7 +370,7 @@
       </section>
 
       <section id="table-wrap" class="table-wrap" hidden>
-        <div class="table-title-nav">
+        <div id="table-title-nav" class="table-title-nav">
           <button id="prev-button" class="nav-arrow" type="button" aria-label="Anterior" title="Anterior" disabled>‹</button>
           <h2 id="table-title"></h2>
           <button id="next-button" class="nav-arrow" type="button" aria-label="Següent" title="Següent" disabled>›</button>
@@ -344,7 +379,7 @@
           <thead id="table-head"></thead>
           <tbody id="table-body"></tbody>
         </table>
-        <label class="tutor-comment" for="tutor-comment">
+        <label id="tutor-comment-label" class="tutor-comment" for="tutor-comment">
           Comentari del tutor
           <textarea id="tutor-comment" rows="3"></textarea>
         </label>
@@ -356,6 +391,21 @@
       <button id="print-button" class="bubble-button" type="button" aria-label="Descarregar butlletí en PDF" title="Descarregar butlletí en PDF" disabled>
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6zM18 13h.01"/>
+        </svg>
+      </button>
+      <button id="csv-button" class="bubble-button" type="button" aria-label="Descarregar acta Excel" title="Descarregar acta Excel" hidden disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h8M8 9h2"/>
+        </svg>
+      </button>
+      <button id="bulk-pdf-button" class="bubble-button" type="button" aria-label="Generar butlletins pendents" title="Generar butlletins pendents" hidden disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M9 15h6M12 12v6"/>
+        </svg>
+      </button>
+      <button id="bulk-mail-button" class="bubble-button" type="button" aria-label="Enviar correus pendents" title="Enviar correus pendents" hidden disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 4h16v16H4zM22 6l-10 7L2 6"/>
         </svg>
       </button>
     </div>
@@ -387,6 +437,9 @@
       document.getElementById('subject-selector').addEventListener('change', handleSubjectChange);
       document.getElementById('save-button').addEventListener('click', saveChanges);
       document.getElementById('print-button').addEventListener('click', downloadStudentReport);
+      document.getElementById('csv-button').addEventListener('click', downloadClosedXlsx);
+      document.getElementById('bulk-pdf-button').addEventListener('click', generateMissingClosedBulletins);
+      document.getElementById('bulk-mail-button').addEventListener('click', sendPendingClosedEmails);
       document.getElementById('prev-button').addEventListener('click', () => navigateSelection(-1));
       document.getElementById('next-button').addEventListener('click', () => navigateSelection(1));
       document.getElementById('tutor-comment').addEventListener('input', handleTutorCommentInput);
@@ -478,8 +531,13 @@
             state.dirtyRows = new Map();
             state.tutorCommentDirty = false;
             state.lastTutorComment = '';
-            renderDetailSelectors();
             setBusy(false);
+            if (isClosedMode()) {
+              renderClosedMode();
+              setStatus(data.message || '');
+              return;
+            }
+            renderDetailSelectors();
             setStatus(data.message || 'Selecciona un alumne o una matèria.');
           })
           .withFailureHandler(error => {
@@ -499,11 +557,20 @@
         subjectSelector.innerHTML = '<option value="">Selecciona una matèria...</option>';
         studentSelector.disabled = true;
         subjectSelector.disabled = true;
+        document.getElementById('student-label').hidden = false;
+        document.getElementById('subject-label').hidden = false;
         resetTutorComment();
         updateActionButtons();
       }
 
       function renderDetailSelectors() {
+        document.getElementById('student-label').hidden = false;
+        document.getElementById('subject-label').hidden = false;
+        document.getElementById('table-title-nav').hidden = false;
+        document.getElementById('prev-button').hidden = false;
+        document.getElementById('next-button').hidden = false;
+        document.getElementById('tutor-comment-label').hidden = false;
+
         const studentSelector = document.getElementById('student-selector');
         const subjectSelector = document.getElementById('subject-selector');
         studentSelector.innerHTML = '<option value="">Selecciona un alumne...</option>';
@@ -518,6 +585,18 @@
 
         studentSelector.disabled = false;
         subjectSelector.disabled = false;
+      }
+
+      function renderClosedMode() {
+        document.getElementById('student-label').hidden = true;
+        document.getElementById('subject-label').hidden = true;
+        document.getElementById('student-selector').disabled = true;
+        document.getElementById('subject-selector').disabled = true;
+        document.getElementById('table-title-nav').hidden = false;
+        document.getElementById('prev-button').hidden = true;
+        document.getElementById('next-button').hidden = true;
+        document.getElementById('tutor-comment-label').hidden = true;
+        renderClosedTable();
       }
 
       function handleStudentChange() {
@@ -598,7 +677,7 @@
         const titleDetail = state.rowsData.mode === 'student'
           ? state.rowsData.selectedStudent
           : state.rowsData.selectedSubject;
-        tableTitle.textContent = `${state.selectedGroup} - ${titleDetail}`;
+        tableTitle.textContent = '';
         tableHead.appendChild(renderHeaderRow(primaryHeader, conceptColumns));
         state.rowsData.rows.forEach(row => {
           tableBody.appendChild(renderDataRow(row, primaryHeader, conceptColumns));
@@ -606,6 +685,93 @@
         tableWrap.hidden = false;
         updateNavigationButtons();
         updateActionButtons();
+      }
+
+      function renderClosedTable() {
+        const tableWrap = document.getElementById('table-wrap');
+        const tableTitle = document.getElementById('table-title');
+        const tableHead = document.getElementById('table-head');
+        const tableBody = document.getElementById('table-body');
+        const rows = state.evaluationData && state.evaluationData.closedRows || [];
+        tableHead.innerHTML = '';
+        tableBody.innerHTML = '';
+        tableTitle.textContent = '';
+        resetTutorComment();
+
+        if (!rows.length) {
+          tableWrap.hidden = true;
+          updateActionButtons();
+          return;
+        }
+
+        const header = document.createElement('tr');
+        ['Alumne', 'Butlletí', 'Enviat'].forEach(text => {
+          const th = document.createElement('th');
+          th.textContent = text;
+          header.appendChild(th);
+        });
+        tableHead.appendChild(header);
+
+        rows.forEach(row => tableBody.appendChild(renderClosedRow(row)));
+        tableWrap.hidden = false;
+        updateNavigationButtons();
+        updateActionButtons();
+      }
+
+      function renderClosedRow(row) {
+        const tr = document.createElement('tr');
+        tr.className = 'closed-row';
+        tr.dataset.student = row.studentFullName || '';
+        tr.dataset.studentAccountId = row.studentAccountId || '';
+
+        const studentCell = document.createElement('td');
+        studentCell.className = 'primary-cell';
+        studentCell.textContent = row.studentFullName || '';
+        tr.appendChild(studentCell);
+
+        const bulletinCell = document.createElement('td');
+        bulletinCell.className = 'action-cell';
+        if (row.bulletinUrl) {
+          const link = document.createElement('a');
+          link.className = 'table-link';
+          link.href = row.bulletinUrl;
+          link.target = '_blank';
+          link.rel = 'noopener';
+          link.title = 'Obrir butlletí';
+          link.textContent = 'PDF';
+          bulletinCell.appendChild(link);
+        } else {
+          const link = document.createElement('a');
+          link.className = 'table-link';
+          link.href = '#';
+          link.textContent = 'Generar';
+          link.addEventListener('click', event => {
+            event.preventDefault();
+            generateClosedBulletin(row);
+          });
+          bulletinCell.appendChild(link);
+        }
+        tr.appendChild(bulletinCell);
+
+        const sentCell = document.createElement('td');
+        sentCell.className = 'action-cell';
+        if (row.sent) {
+          sentCell.textContent = '✓';
+          sentCell.title = 'Enviat';
+        } else {
+          const link = document.createElement('a');
+          link.className = 'table-link';
+          link.href = '#';
+          link.textContent = 'Enviar';
+          link.addEventListener('click', event => {
+            event.preventDefault();
+            sendClosedBulletin(row);
+          });
+          sentCell.appendChild(link);
+        }
+        tr.appendChild(sentCell);
+
+        return tr;
       }
 
       function syncTutorCommentForSelection() {
@@ -832,7 +998,7 @@
         google.script.run
           .withSuccessHandler(file => {
             setBusy(false);
-            triggerPdfDownload(file);
+            triggerFileDownload(file, 'application/pdf');
             setStatus('Butlletí generat.', 'success');
           })
           .withFailureHandler(error => {
@@ -845,6 +1011,157 @@
             student: selectedStudent,
             rows: visibleRows,
             tutorComment: document.getElementById('tutor-comment').value
+          });
+      }
+
+      function generateClosedBulletin(row) {
+        if (!isClosedMode()) return;
+
+        setBusy(true, 'Generant el butlletí...');
+        google.script.run
+          .withSuccessHandler(result => {
+            mergeClosedBulletinResult(result);
+            setBusy(false);
+            renderClosedTable();
+            setStatus('Butlletí generat.', 'success');
+          })
+          .withFailureHandler(error => {
+            setBusy(false);
+            showError(error);
+          })
+          .generateClosedBulletin({
+            sheetName: state.selectedEvaluation,
+            group: state.selectedGroup,
+            student: row.studentFullName,
+            studentAccountId: row.studentAccountId
+          });
+      }
+
+      function generateMissingClosedBulletins() {
+        if (!isClosedMode()) return;
+
+        const pendingRows = (state.evaluationData.closedRows || [])
+          .filter(row => !row.bulletinUrl);
+        if (!pendingRows.length) {
+          setStatus('No hi havia butlletins pendents de generar.', 'success');
+          return;
+        }
+
+        setBusy(true, 'Generant butlletins pendents...');
+        generateNextClosedBulletin(pendingRows, 0, 0);
+      }
+
+      function generateNextClosedBulletin(pendingRows, index, generatedCount) {
+        if (index >= pendingRows.length) {
+          setBusy(false);
+          renderClosedTable();
+          setStatus(`S'han generat ${generatedCount} butlletins.`, 'success');
+          return;
+        }
+
+        const row = pendingRows[index];
+        setOverlayMessage(
+          `Generant butlletí ${index + 1} de ${pendingRows.length}...`,
+          row.studentFullName || ''
+        );
+        google.script.run
+          .withSuccessHandler(result => {
+            mergeClosedBulletinResult(result);
+            generateNextClosedBulletin(pendingRows, index + 1, generatedCount + 1);
+          })
+          .withFailureHandler(error => {
+            setBusy(false);
+            renderClosedTable();
+            showError(error);
+          })
+          .generateClosedBulletin({
+            sheetName: state.selectedEvaluation,
+            group: state.selectedGroup,
+            student: row.studentFullName,
+            studentAccountId: row.studentAccountId
+          });
+      }
+
+      function sendClosedBulletin(row) {
+        if (!isClosedMode()) return;
+        if (!row.bulletinUrl) {
+          setStatus('Cal generar els documents abans d\'enviar-los.', 'error');
+          return;
+        }
+
+        setBusy(true, 'Enviant correu...');
+        google.script.run
+          .withSuccessHandler(() => {
+            reloadClosedData('Correu enviat.', 'success');
+          })
+          .withFailureHandler(error => {
+            setBusy(false);
+            showError(error);
+          })
+          .sendClosedBulletinEmail({
+            sheetName: state.selectedEvaluation,
+            group: state.selectedGroup,
+            student: row.studentFullName,
+            studentAccountId: row.studentAccountId
+          });
+      }
+
+      function sendPendingClosedEmails() {
+        if (!isClosedMode()) return;
+
+        setBusy(true, 'Enviant correus pendents...');
+        google.script.run
+          .withSuccessHandler(data => {
+            replaceClosedRows(data);
+            setBusy(false);
+            renderClosedTable();
+            setStatus(data.message || 'Correus enviats.', 'success');
+          })
+          .withFailureHandler(error => {
+            setBusy(false);
+            showError(error);
+          })
+          .sendPendingClosedBulletinEmails({
+            sheetName: state.selectedEvaluation,
+            group: state.selectedGroup
+          });
+      }
+
+      function downloadClosedXlsx() {
+        if (!isClosedMode()) return;
+
+        setBusy(true, 'Generant l\'acta del grup...');
+        google.script.run
+          .withSuccessHandler(file => {
+            setBusy(false);
+            triggerFileDownload(file, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            setStatus(file.message || 'Acta generada.', 'success');
+          })
+          .withFailureHandler(error => {
+            setBusy(false);
+            showError(error);
+          })
+          .createClosedGroupXlsx({
+            sheetName: state.selectedEvaluation,
+            group: state.selectedGroup
+          });
+      }
+
+      function reloadClosedData(message, type) {
+        google.script.run
+          .withSuccessHandler(data => {
+            state.evaluationData = data;
+            setBusy(false);
+            renderClosedMode();
+            setStatus(message || data.message || '', type || 'success');
+          })
+          .withFailureHandler(error => {
+            setBusy(false);
+            showError(error);
+          })
+          .getAvSessionEvaluationData({
+            sheetName: state.selectedEvaluation,
+            group: state.selectedGroup
           });
       }
 
@@ -863,15 +1180,32 @@
         });
       }
 
-      function triggerPdfDownload(file) {
-        if (!file || !file.base64) throw new Error('No s\'ha pogut generar el PDF.');
+      function triggerFileDownload(file, fallbackMimeType) {
+        if (!file || !file.base64) throw new Error('No s\'ha pogut generar el fitxer.');
 
         const link = document.createElement('a');
-        link.href = `data:${file.mimeType || 'application/pdf'};base64,${file.base64}`;
-        link.download = file.fileName || 'butlleti.pdf';
+        link.href = `data:${file.mimeType || fallbackMimeType || 'application/octet-stream'};base64,${file.base64}`;
+        link.download = file.fileName || 'descarrega';
         document.body.appendChild(link);
         link.click();
         link.remove();
+      }
+
+      function mergeClosedBulletinResult(result) {
+        if (!state.evaluationData || !Array.isArray(state.evaluationData.closedRows) || !result) return;
+
+        state.evaluationData.closedRows = state.evaluationData.closedRows.map(row => {
+          const sameAccount = result.studentAccountId && row.studentAccountId === result.studentAccountId;
+          const sameName = result.studentFullName && row.studentFullName === result.studentFullName;
+          return sameAccount || sameName
+            ? Object.assign({}, row, { bulletinUrl: result.bulletinUrl || row.bulletinUrl })
+            : row;
+        });
+      }
+
+      function replaceClosedRows(data) {
+        if (!state.evaluationData || !data || !Array.isArray(data.rows)) return;
+        state.evaluationData.closedRows = data.rows;
       }
 
       function mergeSavedRowsIntoEvaluationData(rows) {
@@ -932,6 +1266,11 @@
       function updateNavigationButtons() {
         const prevButton = document.getElementById('prev-button');
         const nextButton = document.getElementById('next-button');
+        if (isClosedMode()) {
+          prevButton.disabled = true;
+          nextButton.disabled = true;
+          return;
+        }
         const mode = getCurrentSelectionMode();
         if (!mode) {
           prevButton.disabled = true;
@@ -961,39 +1300,65 @@
       }
 
       function updateSaveButton() {
-        document.getElementById('save-button').disabled =
+        const saveButton = document.getElementById('save-button');
+        saveButton.hidden = isClosedMode();
+        saveButton.disabled =
+          isClosedMode() ||
           (!state.dirtyRows.size && !state.tutorCommentDirty) ||
           document.body.classList.contains('busy');
       }
 
       function updatePrintButton() {
-        document.getElementById('print-button').disabled =
+        const printButton = document.getElementById('print-button');
+        printButton.hidden = isClosedMode();
+        printButton.disabled =
+          isClosedMode() ||
           document.body.classList.contains('busy') ||
           !state.rowsData ||
           state.rowsData.mode !== 'student' ||
           !(state.rowsData.rows || []).length;
       }
 
+      function updateClosedActionButtons() {
+        const showClosedActions = isClosedMode();
+        const hasRows = showClosedActions && state.evaluationData && (state.evaluationData.closedRows || []).length;
+        ['csv-button', 'bulk-pdf-button', 'bulk-mail-button'].forEach(id => {
+          const button = document.getElementById(id);
+          button.hidden = !showClosedActions;
+          button.disabled = !hasRows || document.body.classList.contains('busy');
+        });
+      }
+
       function updateActionButtons() {
         updateSaveButton();
         updatePrintButton();
+        updateClosedActionButtons();
       }
 
       function setBusy(isBusy, message) {
         document.body.classList.toggle('busy', isBusy);
         document.getElementById('overlay').hidden = !isBusy;
         if (message && isBusy) {
-          document.getElementById('overlay-message').textContent = message;
+          setOverlayMessage(message);
         }
         Array.from(document.querySelectorAll('select, input, textarea, button')).forEach(element => {
           if (element.id === 'save-button') {
-            element.disabled = isBusy || (!state.dirtyRows.size && !state.tutorCommentDirty);
+            element.disabled = isBusy || isClosedMode() || (!state.dirtyRows.size && !state.tutorCommentDirty);
           } else if (element.id === 'print-button') {
-            element.disabled = isBusy || !state.rowsData || state.rowsData.mode !== 'student' || !(state.rowsData.rows || []).length;
+            element.disabled = isBusy || isClosedMode() || !state.rowsData || state.rowsData.mode !== 'student' || !(state.rowsData.rows || []).length;
+          } else if (['csv-button', 'bulk-pdf-button', 'bulk-mail-button'].includes(element.id)) {
+            const hasRows = isClosedMode() && state.evaluationData && (state.evaluationData.closedRows || []).length;
+            element.disabled = isBusy || !hasRows;
           } else {
             element.disabled = isBusy || element.dataset.locked === 'true';
           }
         });
+      }
+
+      function setOverlayMessage(message, detail) {
+        document.getElementById('overlay-message').textContent = detail
+          ? `${message}\n${detail}`
+          : message;
       }
 
       function setStatus(message, type) {
@@ -1029,6 +1394,10 @@
         option.value = value;
         option.textContent = label;
         return option;
+      }
+
+      function isClosedMode() {
+        return state.evaluationData && state.evaluationData.mode === 'closed';
       }
     </script>
   </body>

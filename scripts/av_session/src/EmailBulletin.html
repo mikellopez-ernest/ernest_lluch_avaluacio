@@ -1,0 +1,19 @@
+<!-- SUBJECT: Butlletí de la sessió d'avaluació de <?= email.studentName ?> -->
+<p>Benvolguda família,</p>
+
+<p>
+  Us fem arribar el butlletí de la sessió d'avaluació de
+  <strong><?= email.studentName ?></strong>, corresponent a l'avaluació
+  <strong><?= email.evaluationName ?></strong>.
+</p>
+
+<p>Podeu consultar-lo en aquest enllaç:</p>
+
+<p><a href="<?!= email.bulletinUrl ?>"><?= email.bulletinUrl ?></a></p>
+
+<p>Atentament,</p>
+
+<p>
+  Institut Ernest Lluch i Martín<br>
+  Cunit
+</p>

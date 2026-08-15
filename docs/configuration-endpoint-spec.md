@@ -146,20 +146,22 @@ The `Crear avaluació` modal contains:
 | `H1` | `Crear una avaluació` |
 | Evaluation name | Label `Nom de l'avaluació`, placeholder `p.e. 1a avaluació`. |
 | Group list | `Grups a avaluar`; one checkbox per individual `subjects_cache.group` code, checked by default, using first-appearance order from `subjects_cache`. |
-| Subject values | `Avaluació de les matèries`; dynamic list with text, color picker, and delete controls. |
+| Subject values | `Avaluació de les matèries`; dynamic list with full text, reduced-name text, color picker, and delete controls. |
 | Extra concepts | `Altres conceptes a avaluar`; dynamic concepts, each with dynamic option rows. |
 
 Concept rules:
 
 1. A subject value is a dropdown option for `Avaluació de la matèria`.
-2. Each subject value has a circular color control to its right.
-3. The color control defaults to white, `#FFFFFF`.
-4. Clicking the circle opens the browser color picker.
-5. The selected color is stored in config column C, `Color`, on the same row as the subject value.
-6. An extra concept with options becomes a dropdown column.
-7. An extra concept without options becomes an open-text column.
-8. There is no `+` button next to the evaluation name.
-9. Subject values, concepts, and concept options have red delete controls.
+2. Each subject value has a `Reduït` textbox to its right.
+3. Each subject value has a circular color control to the right of `Reduït`.
+4. The color control defaults to white, `#FFFFFF`.
+5. Clicking the circle opens the browser color picker.
+6. The reduced name is stored in config column C, `avaluacio_reduit`, on the same row as the subject value.
+7. The selected color is stored in config column D, `Color`, on the same row as the subject value.
+8. An extra concept with options becomes a dropdown column.
+9. An extra concept without options becomes an open-text column.
+10. There is no `+` button next to the evaluation name.
+11. Subject values, concepts, and concept options have red delete controls.
 
 Generated config sheets use this layout:
 
@@ -167,10 +169,12 @@ Generated config sheets use this layout:
 | --- | --- | --- |
 | A | `data de creació` | Creation datetime in row 2. |
 | B | `Avaluació de les matèries` | Subject-evaluation dropdown values. |
-| C | `Color` | Six-digit hex color for the corresponding value in column B. |
-| D onward | Concept name | Optional concept dropdown values. Blank means open text. |
+| C | `avaluacio_reduit` | Reduced label for the corresponding value in column B. |
+| D | `Color` | Six-digit hex color for the corresponding value in column B. |
+| E onward | Concept name | Optional concept dropdown values. Blank means open text. |
 
-Extra concept columns start at D because C is reserved for `Color`.
+Extra concept columns start at E because C is reserved for `avaluacio_reduit`
+and D is reserved for `Color`.
 
 ## Evaluation Creation
 
@@ -182,7 +186,7 @@ When the user confirms:
 4. Create `{sheet_name}_config`.
 5. Create `{sheet_name}_tutoria`.
 6. Append `Grades` -> `avaluacions` with `Estat = Creada`.
-7. Write the config sheet, including subject-evaluation colors.
+7. Write the config sheet, including subject-evaluation reduced labels and colors.
 8. Populate the main sheet and tutoria sheet from `subjects_cache`.
 
 If `{sheet_name}`, `{sheet_name}_config`, or `{sheet_name}_tutoria` already

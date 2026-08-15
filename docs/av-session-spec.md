@@ -1,11 +1,19 @@
 # Evaluation Session Endpoint Specification
 
-This document defines the `av_session` endpoint for session-mode evaluation grading.
+This document defines the `av_session` endpoint for session-mode evaluation
+grading, tutor comments, and closed-evaluation bulletin actions.
 
 ## Purpose
 
-The evaluation session lets an authorized user grade either one selected student
-across subjects or one selected subject across students.
+The evaluation session lets an authorized user work with an evaluation according
+to its state:
+
+- during `Avaluació professors`, users can review students/subjects and edit
+  tutor comments only
+- during `Mode junta`, users can grade either one selected student across
+  subjects or one selected subject across students
+- during `Tancada`, users can review bulletin-generation and sending status for
+  each visible group
 
 ## Apps Script
 
@@ -58,12 +66,18 @@ today in `Europe/Madrid`.
 
 The endpoint reads `Grades -> avaluacions`.
 
-Rows are available when `Estat` is exactly one of:
+Rows are selectable in the `Avaluació` combo when `Estat` is exactly one of:
 
 ```text
 Mode junta
 Avaluació professors
+Tancada
 ```
+
+If every evaluation row is in `Creada`, the page must show a clear error
+message because no evaluation has started yet. This error is an application-level
+state: once at least one evaluation has another state, the page uses the normal
+selector flow and does not show the all-`Creada` page-level error.
 
 The selected evaluation state controls editability:
 
@@ -71,38 +85,67 @@ The selected evaluation state controls editability:
 | --- | --- |
 | `Mode junta` | Grades and `Comentari_tutor` are editable. |
 | `Avaluació professors` | Students and subjects are visible, but grade fields are disabled. Only `Comentari_tutor` is editable. |
+| `Tancada` | Student/subject grading UI is hidden. The group selector controls a bulletin-status table. |
 
 ## UI Flow
 
-The first row has four horizontal selectors:
+The `Avaluació` selector contains every selectable evaluation state:
+`Avaluació professors`, `Mode junta`, and `Tancada`. The rest of the controls
+depend on the selected evaluation state.
+
+When the selected evaluation is in `Avaluació professors` or `Mode junta`, the
+selector row has four horizontal selectors:
 
 | Selector | Source |
 | --- | --- |
-| `Avaluació` | `Grades -> avaluacions` rows in `Mode junta` or `Avaluació professors`. |
+| `Avaluació` | `Grades -> avaluacions` rows in `Avaluació professors`, `Mode junta`, or `Tancada`. |
 | `Grup` | Visible Dinantia group IDs resolved from the active user. |
 | `Alumne` | Unique students from evaluation rows where `grup_tutoria` contains the selected group ID. |
 | `Matèria` | Unique subjects from evaluation rows where `grup_tutoria` contains the selected group ID. |
 
-`Alumne` and `Matèria` are enabled only after both `Avaluació` and `Grup` are
-selected. They are mutually exclusive: selecting one clears the other.
+In these two states, `Alumne` and `Matèria` are enabled only after both
+`Avaluació` and `Grup` are selected. They are mutually exclusive: selecting one
+clears the other.
+
+For `Tancada`, the selector row has only two selectors:
+
+| Selector | Source |
+| --- | --- |
+| `Avaluació` | `Grades -> avaluacions` rows in `Tancada`. |
+| `Grup` | Visible Dinantia group IDs resolved from the active user. |
+
+It does not show the `Alumne` or `Matèria` selectors. Once a group is selected,
+the page shows the closed-evaluation bulletin table described in
+`Closed Evaluation Table`.
 
 If there is only one available evaluation or one visible group, the matching
 selector is selected automatically. If both `Avaluació` and `Grup` are available
-after auto-selection, the endpoint immediately loads the student and subject
-selectors.
+after auto-selection, the endpoint immediately loads the relevant state-specific
+view: student/subject selectors for `Avaluació professors` or `Mode junta`, and
+the closed-evaluation bulletin table for `Tancada`.
 
-When the table is visible, the title is flanked by previous/next arrow buttons.
-The arrows navigate through the active selector (`Alumne` or `Matèria`). The
-left arrow is disabled on the first item and the right arrow is disabled on the
-last item. Arrow navigation is client-side and uses the already-loaded selector
-values.
+When the table is visible, the page does not show a title under the selectors.
+In student/subject modes, previous/next arrow buttons navigate through the
+active selector (`Alumne` or `Matèria`). The left arrow is disabled on the first
+item and the right arrow is disabled on the last item. Arrow navigation is
+client-side and uses the already-loaded selector values.
 
-The page has two floating bubble buttons in the bottom-right corner:
+In `Avaluació professors` and `Mode junta`, the page has two floating bubble
+buttons in the bottom-right corner:
 
 | Button | Behavior |
 | --- | --- |
 | Save | Saves dirty grade rows and/or the dirty tutor comment. |
 | Print | Generates and downloads a PDF report for the selected student. It is enabled only in student mode. |
+
+In `Tancada`, the page has three floating bubble buttons in the bottom-right
+corner, ordered from left to right:
+
+| Button | Behavior |
+| --- | --- |
+| Spreadsheet icon | Generates and downloads the group XLSX acta described in `Closed XLSX Acta Export`. |
+| PDF icon | Generates PDF bulletins for all remaining students in the selected group whose `Butlletí_url` is blank. |
+| Mail icon | Sends bulletin emails for all students in the selected group that do not have a send marker in either `enviat_email_1` or `enviat_email_2`. |
 
 The layout should be vertically compact so the title, selectors, table, and
 tutor comment field can fit together on screen. Table rows use reduced padding
@@ -143,6 +186,11 @@ When the selected evaluation is in `Avaluació professors`, all grade controls i
 the table are rendered disabled. The user can still navigate the same visible
 students and subjects, and can still edit `Comentari del tutor` in student mode.
 
+When the selected evaluation is in `Tancada`, the endpoint reads
+`Grades -> {sheet_name}_tutoria` for the selected group. It does not load or
+show the normal grading table, tutor-comment editor, save bubble, print bubble,
+student selector, subject selector, or previous/next arrows.
+
 ## Table Columns
 
 Student mode columns:
@@ -169,8 +217,11 @@ Subject mode columns:
 normal editable table column.
 
 The config sheet `{sheet_name}_config` is read like the teacher panel: column B
-contains subject-evaluation options, optional column C named `Color` contains
-colors, and concept columns start after that.
+contains subject-evaluation options, optional column C named
+`avaluacio_reduit` contains reduced labels, optional column D named `Color`
+contains colors, and concept columns start after those metadata columns.
+The backend returns these metadata maps as `subjectEvaluationReducedNames` and
+`subjectEvaluationColors`.
 
 Below the table, the UI shows a text area titled `Comentari del tutor`. It is
 approximately three text rows tall. The field is student-scoped: it is enabled
@@ -198,11 +249,296 @@ The tutoria sheet has one row per student and these columns:
 | `student_account_id` | Stable student identifier shared with the evaluation sheet. |
 | `Comentari_tutor` | Value edited in the `Comentari del tutor` textarea. |
 | `Butlletí_url` | Report-card URL. |
+| `email_1` | First destination email address for bulletin sending. |
+| `enviat_email_1` | Send marker/status for `email_1`. |
+| `email_2` | Second destination email address for bulletin sending. |
+| `enviat_email_2` | Send marker/status for `email_2`. |
 
-When loading a group, the endpoint also reads `{sheet_name}_tutoria` and returns
-the tutor comments for that visible group. The browser keeps them cached by
-`student_account_id` and by `student_full_name`, so changing between students
-does not require another server call.
+If an older `{sheet_name}_tutoria` sheet is missing any of the bulletin/email
+columns, the backend creates the missing headers automatically before writing
+PDF URLs, destination email addresses, or send markers.
+
+When loading a group in `Avaluació professors` or `Mode junta`, the endpoint
+also reads `{sheet_name}_tutoria` and returns the tutor comments for that
+visible group. The browser keeps them cached by `student_account_id` and by
+`student_full_name`, so changing between students does not require another
+server call.
+
+`DRIVE_FOLDER_TUTOR` is the Drive base folder for tutor bulletin storage.
+
+## Closed Evaluation Table
+
+When the selected evaluation is in `Tancada` and a group is selected, the page
+shows a table built from `Grades -> {sheet_name}_tutoria` rows whose
+`grup_tutoria` matches the selected visible group.
+
+The table columns are:
+
+| UI column | Source / behavior |
+| --- | --- |
+| student name | `student_full_name` |
+| `Butlletí` | If `Butlletí_url` has a value, show a PDF icon linked to that Drive/download URL. If it is blank, show `Generar` as a link pointing to `#`; clicking it generates and stores the bulletin PDF as described in `Closed Bulletin Storage`. |
+| `Enviat` | If at least one of `enviat_email_1` or `enviat_email_2` has a value, show a check icon. If both are blank, show `Enviar` as a link pointing to `#`; clicking it sends the bulletin link as described in `Closed Bulletin Email Sending`. |
+
+The closed table is a status/action surface, not a grading surface. It must not
+show grade controls or tutor-comment editing.
+
+Closed-mode row actions and closed-mode floating bubble actions must use the
+same backend rules. Row links operate on one student. Floating bubbles operate
+on every applicable remaining student in the selected group.
+
+## Closed Bulk Action Loading State
+
+The three `Tancada` floating bubble processes can take time:
+
+- group XLSX acta generation
+- missing PDF bulletin generation
+- missing email sending
+
+While any of these processes is running, the page must look disabled. It should
+show the centered animated loading indicator used elsewhere in the app, with a
+short information message below the icon explaining the current process, for
+example:
+
+- `Generant l'acta del grup...`
+- `Generant butlletins pendents...`
+- `Enviant correus pendents...`
+
+During missing PDF bulletin generation, the browser processes students
+sequentially and updates the loading message with the current student's full
+name under the generic progress message.
+
+The user must not be able to change selectors, click table actions, or launch
+another floating action until the running process finishes or fails.
+
+## Closed XLSX Acta Export
+
+When the user clicks the spreadsheet-style floating bubble button in `Tancada`,
+the app generates an XLSX file with the grades of all students in the selected
+group.
+
+The XLSX uses data from:
+
+- `Grades -> {sheet_name}` for subject grades, filtered by `grup_tutoria`
+- `Grades -> {sheet_name}_tutoria` for `Comentari_tutor`, filtered by
+  `grup_tutoria`
+- `Grades -> {sheet_name}_config` for reduced grade labels and configured
+  colors
+
+The backend creates a temporary Google Spreadsheet, writes and formats the acta,
+exports it as `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`,
+returns the file to the browser for download, and trashes the temporary
+spreadsheet in Drive.
+
+The first XLSX row is a title row. It must include the school name, the purpose
+of the file, the evaluation name, the selected group, and the generation date
+and time. This row is merged across the whole acta width. Example shape:
+
+```text
+Institut Ernest Lluch i Martín - Acta de la Junta d'Avaluació 2n trimestre curs 2024-25 3r ESO A - 08/04/2026 09:25
+```
+
+The second XLSX row is the header row:
+
+```text
+Alumnes,Recompte NA,[common subject 1],[common subject 2],...,[non-common subject 1],...,Comentari de tutoria
+```
+
+Subject ordering rules:
+
+1. Use the selected evaluation sheet and filter rows by `grup_tutoria`.
+2. Determine which subjects are common to every student in the selected group.
+3. Put common subjects first.
+4. Put non-common subjects after the common subjects.
+5. Preserve a stable human order based on first-seen order in the evaluation
+   sheet within each group of common/non-common subjects.
+
+Each student row contains:
+
+- student full name
+- `Recompte NA`: the count of subject grades equal to `NA`
+- one reduced grade value per subject column, using
+  `{sheet_name}_config.avaluacio_reduit` for the row's `Avaluació de la
+  matèria` value and falling back to the full grade if no reduced label exists;
+  blank when the student has no row for that subject
+- `Comentari de tutoria`: the student's `Comentari_tutor`
+
+After the student rows, the XLSX includes summary rows for the grade values:
+
+- `NA`
+- `AS`
+- `AN`
+- `AE`
+
+For each subject column, the summary row shows the percentage of students with
+that reduced grade in that subject. The comment column is blank in summary rows.
+
+Grade cells are colored with the configured color for the corresponding full
+`Avaluació de la matèria` value. When the visible cell contains the reduced
+grade, the color still comes from the full grade's config row. Missing or
+invalid colors fall back to white.
+
+The XLSX ends with the signature/footer rows shown in the existing acta style,
+including `Data de la sessió:`, the director signature text, and tutor signature
+text.
+
+All generated XLSX text must be in Catalan.
+
+The backend must validate before generating the XLSX:
+
+- the selected evaluation is still in `Tancada`
+- the selected group is still visible to the active user
+- the exported rows all belong to the selected `grup_tutoria`
+
+## Closed Bulletin Storage
+
+When the user clicks `Generar` in the `Butlletí` column of a `Tancada`
+evaluation, the app generates the student PDF bulletin and stores it in Drive.
+
+The storage root is the Drive folder identified by the `DRIVE_FOLDER_TUTOR`
+constant.
+
+For the selected student/group:
+
+1. Open `DRIVE_FOLDER_TUTOR`.
+2. Look for a child folder whose name is exactly the selected group ID, for
+   example `4t ESO A`.
+3. If the group folder does not exist, create it.
+4. Inside the group folder, look for a child folder whose name is exactly the
+   selected student's full name.
+5. If the student folder does not exist, create it.
+6. Inside the student folder, look for a child folder named `Butlletins`.
+7. If the `Butlletins` folder does not exist, create it.
+8. Generate the PDF bulletin using the same report template and filename pattern
+   already used by the student print action:
+   `butlleti_{student_name}_{evaluation_name}.pdf`.
+9. Store the PDF file in the `Butlletins` folder.
+10. Share the file so anyone with the link can access it.
+11. Write the resulting Drive URL into the matching
+   `{sheet_name}_tutoria.Butlletí_url` cell for that student.
+12. Refresh the closed-evaluation table row so the `Butlletí` column shows the
+    linked PDF icon instead of `Generar`.
+
+When the user clicks the PDF floating bubble button in `Tancada`, the app runs
+the same generation/storage process for every remaining student in the selected
+group whose `Butlletí_url` is blank. Students that already have `Butlletí_url`
+are skipped.
+
+The backend must validate before generating/storing:
+
+- the selected evaluation is still in `Tancada`
+- the selected group is still visible to the active user
+- the selected tutoria row still belongs to the selected group
+- the selected tutoria row still identifies the selected student, preferably by
+  `student_account_id`, falling back to `student_full_name` if needed
+
+## Closed Bulletin Email Sending
+
+When the user clicks `Enviar` in the `Enviat` column of a `Tancada` evaluation,
+the app sends the generated bulletin PDF link to the student's first contacts.
+
+The app must first verify that the selected tutoria row has a value in
+`Butlletí_url`. If `Butlletí_url` is blank, it must not send email. It must show
+a clear message to the user saying that the documents need to be generated
+before sending.
+
+Contacts are read from:
+
+`Dinantia -> contacts_cache`
+
+The `contacts_cache` structure is:
+
+| Column | Purpose |
+| --- | --- |
+| `student_id` | Student account id. |
+| `student_name` | Student display name. |
+| `group_name` | Group name/id. |
+| `contact_id` | Contact identifier. |
+| `contact_position` | Contact order/position. |
+| `contact_name` | Contact display name. |
+| `contact_email` | Destination email address. |
+| `contact_phone` | Contact phone number. |
+
+The relation is:
+
+```text
+{sheet_name}_tutoria.student_account_id
+=
+Dinantia -> contacts_cache.student_id
+```
+
+For the selected student:
+
+1. Read matching `contacts_cache` rows by `student_id`.
+2. Select the first two contacts for the student.
+3. Use only contacts that have a non-empty `contact_email`.
+4. Send an email to those contacts with the PDF link from `Butlletí_url`.
+5. Write destination emails and send markers/status into the matching tutoria
+   row, creating the columns first if needed:
+   - `email_1` and `enviat_email_1` for the first emailed contact
+   - `email_2` and `enviat_email_2` for the second emailed contact
+6. Refresh the closed-evaluation table row so the `Enviat` column shows the
+   check icon.
+
+Email content must be defined in a dedicated Apps Script template file so it is
+easy to edit without touching backend logic:
+
+| File | Responsibility |
+| --- | --- |
+| `scripts/av_session/src/EmailBulletin.html` | Human-editable Catalan email subject/body template. |
+| `scripts/av_session/src/Code.js` | Contact lookup, permission checks, template data preparation, email sending, and tutoria send-marker updates. |
+
+The sender name/alias must always be:
+
+```text
+Institut Ernest Lluch i Martín
+```
+
+Default email subject:
+
+```text
+Butlletí de la sessió d'avaluació de {{student_name}}
+```
+
+Default email body:
+
+```text
+Benvolguda família,
+
+Us fem arribar el butlletí de la sessió d'avaluació de {{student_name}}, corresponent a l'avaluació {{evaluation_name}}.
+
+Podeu consultar-lo en aquest enllaç:
+
+{{butlleti_url}}
+
+Atentament,
+
+Institut Ernest Lluch i Martín
+Cunit
+```
+
+The template variables are:
+
+| Variable | Value |
+| --- | --- |
+| `student_name` | `{sheet_name}_tutoria.student_full_name` |
+| `evaluation_name` | selected evaluation display name from `Grades -> avaluacions` |
+| `butlleti_url` | `{sheet_name}_tutoria.Butlletí_url` |
+
+The backend must validate before sending:
+
+- the selected evaluation is still in `Tancada`
+- the selected group is still visible to the active user
+- the selected tutoria row still belongs to the selected group
+- the selected tutoria row still identifies the selected student by
+  `student_account_id`
+- `Butlletí_url` is present
+
+When the user clicks the mail floating bubble button in `Tancada`, the app runs
+the same sending process for every student in the selected group whose
+`enviat_email_1` and `enviat_email_2` are both blank. Students without
+`Butlletí_url` are not sent; the UI should report that their documents need to
+be generated first.
 
 ## Save Rules
 
@@ -307,11 +643,17 @@ selected student and group.
 | Function | Purpose |
 | --- | --- |
 | `doGet` | Web app entrypoint. |
-| `grantPermissionsManually` | Manual authorization helper for the owner. |
+| `grantPermissionsManually` | Manual authorization helper for the owner. It probes spreadsheet access, Drive folder/file creation and sharing, XLSX export through `UrlFetchApp`, external requests, and email sending permissions. |
 | `getAvSessionData` | Loads active-user context, visible groups, and session-available evaluations. |
 | `getAvSessionEvaluationData` | Loads students and subjects for a selected evaluation and group. |
 | `getAvSessionRows` | Loads table rows for the selected student or subject. |
 | `saveAvSessionRows` | Saves dirty editable row values and/or the selected student's tutor comment. |
 | `createAvSessionStudentReportPdf` | Generates a downloadable PDF report for the selected student. |
+| `generateClosedBulletin` | Generates and stores one closed-evaluation student bulletin PDF, then writes `Butlletí_url`. |
+| `generateMissingClosedBulletins` | Generates and stores closed-evaluation bulletin PDFs for all selected-group students still missing `Butlletí_url`. |
+| `sendClosedBulletinEmail` | Sends one closed-evaluation bulletin email to the student's first available contacts. |
+| `sendPendingClosedBulletinEmails` | Sends closed-evaluation bulletin emails for selected-group students that have a PDF URL and no send marker. |
+| `createClosedGroupXlsx` | Generates a downloadable XLSX acta for the selected closed evaluation and group. |
+| `createClosedGroupCsv` | Backwards-compatible wrapper that now returns the same XLSX payload as `createClosedGroupXlsx`. |
 
 All implementation helpers should use a trailing underscore.

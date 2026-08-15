@@ -11,15 +11,19 @@ const TEACHERS_TO_DINANTIA_SHEET_NAME = 'teachers_2_dinantia';
 const GRADES_TABLE_NAME = 'Grades';
 const EVALUATIONS_SHEET_NAME = 'avaluacions';
 
+const CREATED_STATUS = 'Creada';
 const MODE_JUNTA_STATUS = 'Mode junta';
 const TEACHER_EVALUATION_STATUS = 'Avaluació professors';
-const AVAILABLE_EVALUATION_STATUSES = [MODE_JUNTA_STATUS, TEACHER_EVALUATION_STATUS];
+const CLOSED_STATUS = 'Tancada';
+const AVAILABLE_EVALUATION_STATUSES = [TEACHER_EVALUATION_STATUS, MODE_JUNTA_STATUS, CLOSED_STATUS];
 const ADMIN_PRIVILEGES_MARKER = 'ADMIN_PRIVILEGES';
 const STUDENT_ACCOUNT_ID_HEADER = 'student_account_id';
 const SUBJECT_EVALUATION_HEADER = 'Avaluació de la matèria';
 const TUTORING_GROUP_HEADER = 'grup_tutoria';
 const TUTOR_COMMENT_HEADER = 'Comentari_tutor';
 const TUTORIA_SHEET_SUFFIX = '_tutoria';
+const CONTACTS_CACHE_SHEET_NAME = 'contacts_cache';
+const DRIVE_FOLDER_TUTOR = '1QOKS9dRiJ4-9psqwmAh6RT0rXqV0A8HQ';
 const REPORT_LOGO_BASE64 = [
   "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",
@@ -71,25 +75,107 @@ function doGet() {
 }
 
 function grantPermissionsManually() {
-  const userEmail = getActiveUserEmail_();
-  const teachersSpreadsheet = openLogicalTableSpreadsheet_(TEACHERS_TABLE_NAME);
-  getRequiredSheet_(teachersSpreadsheet, TEACHERS_SHEET_NAME);
-  getRequiredSheet_(teachersSpreadsheet, LEAVE_ABSENCE_SHEET_NAME);
-  getRequiredSheet_(openLogicalTableSpreadsheet_(TEACHING_LOAD_TABLE_NAME), RESPONSIBILITIES_SHEET_NAME);
-  getRequiredSheet_(openLogicalTableSpreadsheet_(DINANTIA_TABLE_NAME), TEACHERS_TO_DINANTIA_SHEET_NAME);
-  getRequiredSheet_(openLogicalTableSpreadsheet_(GRADES_TABLE_NAME), EVALUATIONS_SHEET_NAME);
+  const userEmail = getActiveUserEmail_() || Session.getEffectiveUser().getEmail();
+  if (!userEmail) throw new Error('No s\'ha pogut identificar cap correu per enviar el missatge de prova.');
+  const checks = [];
+
+  runPermissionCheck_(checks, 'Fulls de càlcul de dades', () => {
+    const teachersSpreadsheet = openLogicalTableSpreadsheet_(TEACHERS_TABLE_NAME);
+    getRequiredSheet_(teachersSpreadsheet, TEACHERS_SHEET_NAME);
+    getRequiredSheet_(teachersSpreadsheet, LEAVE_ABSENCE_SHEET_NAME);
+    getRequiredSheet_(openLogicalTableSpreadsheet_(TEACHING_LOAD_TABLE_NAME), RESPONSIBILITIES_SHEET_NAME);
+    getRequiredSheet_(openLogicalTableSpreadsheet_(DINANTIA_TABLE_NAME), TEACHERS_TO_DINANTIA_SHEET_NAME);
+    getRequiredSheet_(openLogicalTableSpreadsheet_(GRADES_TABLE_NAME), EVALUATIONS_SHEET_NAME);
+  });
+
+  runPermissionCheck_(checks, 'Drive general i export XLSX', () => {
+    const tempSpreadsheet = SpreadsheetApp.create(`av_session_permission_probe_${Date.now()}`);
+    const tempFile = DriveApp.getFileById(tempSpreadsheet.getId());
+    try {
+      tempSpreadsheet.getSheets()[0].getRange(1, 1).setValue('Temporary XLSX export permission check.');
+      SpreadsheetApp.flush();
+      UrlFetchApp.fetch(
+        `https://www.googleapis.com/drive/v3/files/${tempSpreadsheet.getId()}/export?mimeType=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`,
+        {
+          headers: {
+            Authorization: `Bearer ${ScriptApp.getOAuthToken()}`
+          },
+          muteHttpExceptions: true
+        }
+      );
+    } finally {
+      tempFile.setTrashed(true);
+    }
+  });
+
+  runPermissionCheck_(checks, 'Carpeta DRIVE_FOLDER_TUTOR', () => {
+    const tutorFolder = DriveApp.getFolderById(DRIVE_FOLDER_TUTOR);
+    const permissionFolder = tutorFolder.createFolder(`av_session_permission_probe_${Date.now()}`);
+    const permissionProbe = permissionFolder.createFile(
+      `av_session_permission_probe_${Date.now()}.txt`,
+      'Temporary permission check for av_session.'
+    );
+    permissionProbe.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    permissionProbe.setTrashed(true);
+    permissionFolder.setTrashed(true);
+  });
+
+  runPermissionCheck_(checks, 'Connexions externes', () => {
+    UrlFetchApp.fetch('https://www.googleapis.com', { muteHttpExceptions: true });
+  });
+
+  runPermissionCheck_(checks, 'Enviament de correu', () => {
+    const remainingQuotaBefore = MailApp.getRemainingDailyQuota();
+    MailApp.sendEmail({
+      to: userEmail,
+      subject: 'Permisos av_session',
+      htmlBody: '<p>Missatge automàtic de prova per autoritzar l\'enviament de correus d\'av_session.</p>',
+      name: 'Institut Ernest Lluch i Martín'
+    });
+    GmailApp.sendEmail(
+      userEmail,
+      'Permisos av_session GmailApp',
+      'Missatge automàtic de prova per autoritzar GmailApp a av_session.',
+      { name: 'Institut Ernest Lluch i Martín' }
+    );
+    Logger.log(`Mail permission probe sent to ${userEmail}. MailApp quota before send: ${remainingQuotaBefore}.`);
+  });
+
+  const listItems = checks.map(check => {
+    const mark = check.ok ? 'OK' : 'ERROR';
+    const detail = check.ok ? '' : `: ${escapeHtml_(check.message)}`;
+    return `<li><strong>${mark}</strong> ${escapeHtml_(check.name)}${detail}</li>`;
+  }).join('');
+  Logger.log(JSON.stringify(checks));
 
   return HtmlService.createHtmlOutput(
-    `<p>Permissions ready for ${userEmail || 'current user'}.</p>`
+    `<p>Comprovació de permisos per a ${escapeHtml_(userEmail)}.</p><ul>${listItems}</ul>`
   )
     .setTitle('Sessió d\'avaluació')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function runPermissionCheck_(checks, name, callback) {
+  try {
+    callback();
+    checks.push({ name, ok: true });
+  } catch (error) {
+    checks.push({
+      name,
+      ok: false,
+      message: error && error.message ? error.message : String(error)
+    });
+  }
 }
 
 function getAvSessionData() {
   assertAllowedUser_();
 
   const context = resolveUserVisibilityContext_();
+  const allEvaluations = readEvaluationRegisters_();
+  if (allEvaluations.length && allEvaluations.every(evaluation => evaluation.status === CREATED_STATUS)) {
+    throw new Error('Aquesta avaluació encara no ha començat.');
+  }
   const evaluations = readAvailableEvaluationRegisters_();
   if (!evaluations.length) {
     throw new Error(`No hi ha cap avaluació en estat "${AVAILABLE_EVALUATION_STATUSES.join('" o "')}".`);
@@ -118,6 +204,16 @@ function getAvSessionEvaluationData(payload) {
 
   const evaluation = getAvailableEvaluationFromPayload_(payload);
   const gradesSpreadsheet = openLogicalTableSpreadsheet_(GRADES_TABLE_NAME);
+  if (isEvaluationClosed_(evaluation)) {
+    return {
+      evaluation,
+      group: selectedGroup,
+      mode: 'closed',
+      closedRows: readTutoriaRowsForGroup_(gradesSpreadsheet, evaluation.sheetName, selectedGroup),
+      message: ''
+    };
+  }
+
   const sheet = getRequiredSheet_(gradesSpreadsheet, evaluation.sheetName);
   const config = readEvaluationConfig_(gradesSpreadsheet, evaluation.sheetName);
   const table = readEvaluationTable_(sheet);
@@ -134,6 +230,7 @@ function getAvSessionEvaluationData(payload) {
     tutorCommentsByStudentName: tutorComments.byStudentName,
     gradeFieldsEditable: isEvaluationGradeEditable_(evaluation),
     subjectEvaluationOptions: config.subjectEvaluationOptions,
+    subjectEvaluationReducedNames: config.subjectEvaluationReducedNames,
     subjectEvaluationColors: config.subjectEvaluationColors,
     conceptColumns: mergeConceptColumns_(table.conceptColumns, config.conceptColumns),
     message: rowsForGroup.length ? '' : 'No hi ha files per a aquest grup en aquesta avaluació.'
@@ -177,6 +274,7 @@ function getAvSessionRows(payload) {
     rows,
     gradeFieldsEditable: isEvaluationGradeEditable_(evaluation),
     subjectEvaluationOptions: config.subjectEvaluationOptions,
+    subjectEvaluationReducedNames: config.subjectEvaluationReducedNames,
     subjectEvaluationColors: config.subjectEvaluationColors,
     conceptColumns: mergeConceptColumns_(table.conceptColumns, config.conceptColumns),
     message: rows.length ? '' : 'No hi ha files per a la selecció actual.'
@@ -367,6 +465,74 @@ function createAvSessionStudentReportPdf(payload) {
   };
 }
 
+function generateClosedBulletin(payload) {
+  const result = withClosedContext_(payload, context => {
+    const target = findClosedTutoriaTarget_(context, payload);
+    return generateAndStoreClosedBulletin_(context, target);
+  });
+  return result;
+}
+
+function generateMissingClosedBulletins(payload) {
+  return withClosedContext_(payload, context => {
+    const generated = [];
+    const skipped = [];
+    context.closedRows.forEach(row => {
+      if (row.bulletinUrl) {
+        skipped.push(row.studentFullName);
+        return;
+      }
+      generated.push(generateAndStoreClosedBulletin_(context, row));
+    });
+    return {
+      rows: readTutoriaRowsForGroup_(context.gradesSpreadsheet, context.evaluation.sheetName, context.selectedGroup),
+      generatedCount: generated.length,
+      skippedCount: skipped.length,
+      message: generated.length
+        ? `S'han generat ${generated.length} butlletins.`
+        : 'No hi havia butlletins pendents de generar.'
+    };
+  });
+}
+
+function sendClosedBulletinEmail(payload) {
+  return withClosedContext_(payload, context => {
+    const target = findClosedTutoriaTarget_(context, payload);
+    return sendClosedBulletinEmailForRow_(context, target);
+  });
+}
+
+function sendPendingClosedBulletinEmails(payload) {
+  return withClosedContext_(payload, context => {
+    const sent = [];
+    const missingDocuments = [];
+    context.closedRows.forEach(row => {
+      if (row.sent) return;
+      if (!row.bulletinUrl) {
+        missingDocuments.push(row.studentFullName);
+        return;
+      }
+      sent.push(sendClosedBulletinEmailForRow_(context, row));
+    });
+    return {
+      rows: readTutoriaRowsForGroup_(context.gradesSpreadsheet, context.evaluation.sheetName, context.selectedGroup),
+      sentCount: sent.length,
+      missingDocumentsCount: missingDocuments.length,
+      message: buildBulkEmailMessage_(sent.length, missingDocuments.length)
+    };
+  });
+}
+
+function createClosedGroupXlsx(payload) {
+  return withClosedContext_(payload, context => {
+    return createClosedGroupXlsxFile_(context);
+  });
+}
+
+function createClosedGroupCsv(payload) {
+  return createClosedGroupXlsx(payload);
+}
+
 function buildRowsResponseFromTable_(evaluation, selectedGroup, selectedStudent, selectedSubject, table) {
   const rows = table.rows
     .filter(row => rowIncludesGroup_(row, selectedGroup))
@@ -416,6 +582,415 @@ function buildStudentReportItems_(row, conceptHeaders) {
     label: header,
     value: row.concepts[header] || ''
   }))).filter(item => String(item.value || '').trim());
+}
+
+function withClosedContext_(payload, callback) {
+  assertAllowedUser_();
+
+  const selectedGroup = String(payload && payload.group || '').trim();
+  if (!selectedGroup) throw new Error('Cal seleccionar un grup.');
+
+  const visibilityContext = resolveUserVisibilityContext_();
+  assertAllowedGroup_(selectedGroup, visibilityContext.visibleGroups);
+  const evaluation = getAvailableEvaluationFromPayload_(payload);
+  if (!isEvaluationClosed_(evaluation)) {
+    throw new Error('Aquesta acció només està disponible amb una avaluació tancada.');
+  }
+
+  const gradesSpreadsheet = openLogicalTableSpreadsheet_(GRADES_TABLE_NAME);
+  const closedRows = readTutoriaRowsForGroup_(gradesSpreadsheet, evaluation.sheetName, selectedGroup);
+  const context = {
+    selectedGroup,
+    evaluation,
+    gradesSpreadsheet,
+    closedRows
+  };
+  return callback(context);
+}
+
+function findClosedTutoriaTarget_(context, payload) {
+  const studentAccountId = String(payload && payload.studentAccountId || '').trim();
+  const studentFullName = String(payload && payload.student || '').trim();
+  const row = context.closedRows.find(candidate =>
+    (studentAccountId && candidate.studentAccountId === studentAccountId) ||
+    (studentFullName && normalizeText_(candidate.studentFullName) === normalizeText_(studentFullName))
+  );
+  if (!row) throw new Error('No s\'ha trobat l\'alumne seleccionat al full de tutoria.');
+  return row;
+}
+
+function generateAndStoreClosedBulletin_(context, tutoriaRow) {
+  const reportData = buildStudentReportDataFromSheets_(context, tutoriaRow);
+  const html = buildStudentReportHtml_(reportData);
+  const fileName = buildStudentReportFileName_(tutoriaRow.studentFullName, context.evaluation.name);
+  const pdfBlob = Utilities.newBlob(html, MimeType.HTML, 'butlleti.html')
+    .getAs(MimeType.PDF)
+    .setName(fileName);
+  const folder = getClosedBulletinsFolder_(context.selectedGroup, tutoriaRow.studentFullName);
+  const file = folder.createFile(pdfBlob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+  updateTutoriaCells_(context.gradesSpreadsheet, context.evaluation.sheetName, tutoriaRow.sheetRow, {
+    'Butlletí_url': file.getUrl()
+  });
+
+  return {
+    studentAccountId: tutoriaRow.studentAccountId,
+    studentFullName: tutoriaRow.studentFullName,
+    bulletinUrl: file.getUrl()
+  };
+}
+
+function buildStudentReportDataFromSheets_(context, tutoriaRow) {
+  const sheet = getRequiredSheet_(context.gradesSpreadsheet, context.evaluation.sheetName);
+  const table = readEvaluationTable_(sheet);
+  const rows = table.rows
+    .filter(row => rowIncludesGroup_(row, context.selectedGroup))
+    .filter(row => rowMatchesStudent_(row, tutoriaRow.studentFullName, tutoriaRow.studentAccountId))
+    .sort((a, b) => compareText_(a.subjectFullName, b.subjectFullName));
+
+  if (!rows.length) {
+    throw new Error(`No hi ha dades d'avaluació per a ${tutoriaRow.studentFullName}.`);
+  }
+
+  return {
+    evaluation: context.evaluation,
+    selectedGroup: context.selectedGroup,
+    selectedStudent: tutoriaRow.studentFullName,
+    rows,
+    conceptColumns: table.conceptColumns,
+    tutorComment: tutoriaRow.tutorComment
+  };
+}
+
+function getClosedBulletinsFolder_(groupName, studentName) {
+  const root = DriveApp.getFolderById(DRIVE_FOLDER_TUTOR);
+  const groupFolder = getOrCreateChildFolder_(root, groupName);
+  const studentFolder = getOrCreateChildFolder_(groupFolder, studentName);
+  return getOrCreateChildFolder_(studentFolder, 'Butlletins');
+}
+
+function getOrCreateChildFolder_(parent, name) {
+  const folders = parent.getFoldersByName(name);
+  return folders.hasNext() ? folders.next() : parent.createFolder(name);
+}
+
+function sendClosedBulletinEmailForRow_(context, tutoriaRow) {
+  if (!tutoriaRow.bulletinUrl) {
+    throw new Error('Cal generar els documents abans d\'enviar-los.');
+  }
+
+  const contacts = readFirstStudentContacts_(tutoriaRow.studentAccountId)
+    .filter(contact => contact.email)
+    .slice(0, 2);
+  if (!contacts.length) {
+    throw new Error(`No s'han trobat correus de contacte per a ${tutoriaRow.studentFullName}.`);
+  }
+
+  const email = buildBulletinEmail_(context, tutoriaRow);
+  contacts.forEach(contact => {
+    MailApp.sendEmail({
+      to: contact.email,
+      subject: email.subject,
+      htmlBody: email.htmlBody,
+      name: 'Institut Ernest Lluch i Martín'
+    });
+  });
+
+  const updates = {};
+  if (contacts[0]) {
+    updates.email_1 = contacts[0].email;
+    updates.enviat_email_1 = buildSentMarker_(contacts[0]);
+  }
+  if (contacts[1]) {
+    updates.email_2 = contacts[1].email;
+    updates.enviat_email_2 = buildSentMarker_(contacts[1]);
+  }
+  updateTutoriaCells_(context.gradesSpreadsheet, context.evaluation.sheetName, tutoriaRow.sheetRow, updates);
+
+  return {
+    studentAccountId: tutoriaRow.studentAccountId,
+    studentFullName: tutoriaRow.studentFullName,
+    sentCount: contacts.length
+  };
+}
+
+function buildBulletinEmail_(context, tutoriaRow) {
+  const template = HtmlService.createTemplateFromFile('EmailBulletin');
+  template.email = {
+    studentName: tutoriaRow.studentFullName,
+    evaluationName: context.evaluation.name,
+    bulletinUrl: tutoriaRow.bulletinUrl
+  };
+  const htmlBody = template.evaluate().getContent();
+  const subjectMatch = htmlBody.match(/<!--\s*SUBJECT:\s*([\s\S]*?)\s*-->/);
+  return {
+    subject: subjectMatch
+      ? subjectMatch[1].replace(/\s+/g, ' ').trim()
+      : `Butlletí de la sessió d'avaluació de ${tutoriaRow.studentFullName}`,
+    htmlBody: htmlBody.replace(/<!--\s*SUBJECT:[\s\S]*?-->/, '').trim()
+  };
+}
+
+function readFirstStudentContacts_(studentAccountId) {
+  const cleanStudentAccountId = String(studentAccountId || '').trim();
+  if (!cleanStudentAccountId) return [];
+
+  const sheet = getRequiredSheet_(openLogicalTableSpreadsheet_(DINANTIA_TABLE_NAME), CONTACTS_CACHE_SHEET_NAME);
+  return readRowsByHeader_(sheet)
+    .filter(row => String(getField_(row, 'student_id') || '').trim() === cleanStudentAccountId)
+    .sort((a, b) => {
+      const positionA = Number(getField_(a, 'contact_position')) || 999;
+      const positionB = Number(getField_(b, 'contact_position')) || 999;
+      return positionA - positionB;
+    })
+    .slice(0, 2)
+    .map(row => ({
+      id: String(getField_(row, 'contact_id') || '').trim(),
+      position: String(getField_(row, 'contact_position') || '').trim(),
+      name: String(getField_(row, 'contact_name') || '').trim(),
+      email: String(getField_(row, 'contact_email') || '').trim()
+    }));
+}
+
+function buildSentMarker_(contact) {
+  const timestamp = Utilities.formatDate(new Date(), TIMEZONE, 'yyyy-MM-dd HH:mm:ss');
+  return `${timestamp} ${contact.email}`;
+}
+
+function buildBulkEmailMessage_(sentCount, missingDocumentsCount) {
+  if (sentCount && missingDocumentsCount) {
+    return `S'han enviat ${sentCount} correus. ${missingDocumentsCount} alumnes necessiten generar el document abans d'enviar.`;
+  }
+  if (sentCount) return `S'han enviat ${sentCount} correus.`;
+  if (missingDocumentsCount) return 'Cal generar els documents abans d\'enviar-los.';
+  return 'No hi havia correus pendents d\'enviar.';
+}
+
+function buildClosedGroupCsv_(context) {
+  const model = buildClosedGroupActaModel_(context);
+  return model.values.map(row => row.map(csvEscape_).join(',')).join('\r\n');
+}
+
+function createClosedGroupXlsxFile_(context) {
+  const model = buildClosedGroupActaModel_(context);
+  const fileName = `acta_${sanitizeFileNamePart_(context.selectedGroup)}_${sanitizeFileNamePart_(context.evaluation.name)}.xlsx`;
+  const tempSpreadsheet = SpreadsheetApp.create(fileName.replace(/\.xlsx$/i, ''));
+  const tempFile = DriveApp.getFileById(tempSpreadsheet.getId());
+
+  try {
+    const sheet = tempSpreadsheet.getSheets()[0];
+    sheet.setName('Acta');
+    applyClosedGroupActaSheet_(sheet, model);
+    SpreadsheetApp.flush();
+
+    const exportUrl = `https://www.googleapis.com/drive/v3/files/${tempSpreadsheet.getId()}/export` +
+      '?mimeType=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    const response = UrlFetchApp.fetch(exportUrl, {
+      headers: {
+        Authorization: `Bearer ${ScriptApp.getOAuthToken()}`
+      },
+      muteHttpExceptions: true
+    });
+    if (response.getResponseCode() !== 200) {
+      throw new Error(`No s'ha pogut exportar l'acta XLSX (${response.getResponseCode()}).`);
+    }
+
+    return {
+      fileName,
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      base64: Utilities.base64Encode(response.getBlob().getBytes()),
+      message: 'Acta XLSX generada.'
+    };
+  } finally {
+    tempFile.setTrashed(true);
+  }
+}
+
+function buildClosedGroupActaModel_(context) {
+  const sheet = getRequiredSheet_(context.gradesSpreadsheet, context.evaluation.sheetName);
+  const config = readEvaluationConfig_(context.gradesSpreadsheet, context.evaluation.sheetName);
+  const table = readEvaluationTable_(sheet);
+  const evalRows = table.rows.filter(row => rowIncludesGroup_(row, context.selectedGroup));
+  const students = context.closedRows.slice().sort((a, b) => compareText_(a.studentFullName, b.studentFullName));
+  const subjectOrder = buildClosedCsvSubjectOrder_(evalRows, students);
+  const reducedNames = config.subjectEvaluationReducedNames || {};
+  const gradeColors = buildReducedGradeColorMap_(config);
+  const rowsByStudent = new Map();
+  evalRows.forEach(row => {
+    const key = row.studentAccountId || row.studentFullName;
+    if (!rowsByStudent.has(key)) rowsByStudent.set(key, new Map());
+    rowsByStudent.get(key).set(row.subjectFullName, row);
+  });
+
+  const title = `Institut Ernest Lluch i Martín - Acta de la Junta d'Avaluació ${context.evaluation.name} ${context.selectedGroup} - ${Utilities.formatDate(new Date(), TIMEZONE, 'dd/MM/yyyy HH:mm')}`;
+  const csvRows = [];
+  const columnCount = subjectOrder.length + 3;
+  csvRows.push([title]);
+  csvRows.push(['Alumnes', 'Recompte NA'].concat(subjectOrder, ['Comentari de tutoria']));
+
+  students.forEach(student => {
+    const studentRows = rowsByStudent.get(student.studentAccountId) || rowsByStudent.get(student.studentFullName) || new Map();
+    const grades = subjectOrder.map(subject => {
+      const row = studentRows.get(subject);
+      return row ? getReducedSubjectEvaluation_(row.subjectEvaluation, reducedNames) : '';
+    });
+    const naCount = grades.filter(grade => grade === 'NA').length;
+    csvRows.push([student.studentFullName, naCount].concat(grades, [student.tutorComment]));
+  });
+
+  csvRows.push(Array(subjectOrder.length + 3).fill(''));
+  ['NA', 'AS', 'AN', 'AE'].forEach(grade => {
+    csvRows.push(['', grade].concat(subjectOrder.map(subject =>
+      formatPercentage_(students, rowsByStudent, subject, grade, reducedNames)
+    ), ['']));
+  });
+  csvRows.push(Array(subjectOrder.length + 3).fill(''));
+  csvRows.push(['Data de la sessió: ', 'Signatura de la directora, Marisa González Frias']
+    .concat(Array(Math.max(0, subjectOrder.length - 2)).fill(''), ['Nom i signatura del tutor/a']));
+
+  return {
+    values: normalizeActaRows_(csvRows, columnCount),
+    gradeColors,
+    studentCount: students.length,
+    subjectCount: subjectOrder.length,
+    summaryStartRow: students.length + 4,
+    footerRow: students.length + 9
+  };
+}
+
+function normalizeActaRows_(rows, columnCount) {
+  return rows.map(row => row.concat(Array(Math.max(0, columnCount - row.length)).fill('')).slice(0, columnCount));
+}
+
+function applyClosedGroupActaSheet_(sheet, model) {
+  const values = model.values;
+  const rowCount = values.length;
+  const columnCount = values[0] ? values[0].length : 1;
+  sheet.clear();
+  sheet.getRange(1, 1, rowCount, columnCount).setValues(values);
+  if (columnCount > 1) sheet.getRange(1, 1, 1, columnCount).merge();
+
+  sheet.getRange(1, 1, rowCount, columnCount)
+    .setFontFamily('Arial')
+    .setFontSize(10)
+    .setVerticalAlignment('middle')
+    .setBorder(true, true, true, true, true, true, '#d9d9d9', SpreadsheetApp.BorderStyle.SOLID);
+  sheet.getRange(1, 1, 1, columnCount)
+    .setBackground('#4A4A4A')
+    .setFontColor('#FFFFFF')
+    .setFontWeight('bold')
+    .setFontSize(12)
+    .setHorizontalAlignment('left');
+  sheet.getRange(2, 1, 1, columnCount)
+    .setBackground('#D3D3D3')
+    .setFontWeight('bold')
+    .setWrap(true)
+    .setHorizontalAlignment('center');
+  sheet.getRange(2, 1, 1, 2).setHorizontalAlignment('left');
+
+  const dataStartRow = 3;
+  const dataEndRow = dataStartRow + model.studentCount - 1;
+  if (model.studentCount > 0) {
+    sheet.getRange(dataStartRow, 1, model.studentCount, 1).setFontWeight('bold');
+    sheet.getRange(dataStartRow, 2, model.studentCount, 1).setHorizontalAlignment('center');
+  }
+  if (model.studentCount > 0 && model.subjectCount > 0) {
+    const gradeRange = sheet.getRange(dataStartRow, 3, model.studentCount, model.subjectCount);
+    gradeRange
+      .setHorizontalAlignment('center')
+      .setFontWeight('bold')
+      .setBackgrounds(buildGradeBackgrounds_(values, dataStartRow, 3, model.studentCount, model.subjectCount, model.gradeColors));
+  }
+
+  const summaryStartRow = model.summaryStartRow;
+  if (model.subjectCount > 0) {
+    sheet.getRange(summaryStartRow, 2, 4, 1)
+      .setFontWeight('bold')
+      .setHorizontalAlignment('center')
+      .setBackgrounds(['NA', 'AS', 'AN', 'AE'].map(grade => [model.gradeColors[grade] || '#FFFFFF']));
+    sheet.getRange(summaryStartRow, 3, 4, model.subjectCount)
+      .setNumberFormat('0.00%')
+      .setHorizontalAlignment('center');
+  }
+
+  sheet.getRange(model.footerRow, 1, 1, columnCount).setFontWeight('bold');
+  sheet.setFrozenRows(2);
+  sheet.setColumnWidth(1, 230);
+  sheet.setColumnWidth(2, 95);
+  for (let column = 3; column <= columnCount - 1; column += 1) {
+    sheet.setColumnWidth(column, 105);
+  }
+  sheet.setColumnWidth(columnCount, 230);
+  sheet.setRowHeight(1, 28);
+  sheet.setRowHeight(2, 54);
+  if (model.studentCount > 0) {
+    sheet.setRowHeights(dataStartRow, model.studentCount, 24);
+  }
+  sheet.autoResizeColumn(1);
+  sheet.getRange(1, 1, rowCount, columnCount).setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP);
+  sheet.getRange(dataStartRow, 3, Math.max(1, model.studentCount), Math.max(1, model.subjectCount))
+    .setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
+  if (dataEndRow >= dataStartRow) {
+    sheet.getRange(dataStartRow, columnCount, model.studentCount, 1).setWrap(true);
+  }
+}
+
+function buildGradeBackgrounds_(values, startRow, startColumn, rowCount, columnCount, gradeColors) {
+  const backgrounds = [];
+  for (let rowOffset = 0; rowOffset < rowCount; rowOffset += 1) {
+    const row = [];
+    for (let columnOffset = 0; columnOffset < columnCount; columnOffset += 1) {
+      const grade = String(values[startRow - 1 + rowOffset][startColumn - 1 + columnOffset] || '').trim();
+      row.push(grade ? gradeColors[grade] || '#FFFFFF' : '#FFFFFF');
+    }
+    backgrounds.push(row);
+  }
+  return backgrounds;
+}
+
+function buildReducedGradeColorMap_(config) {
+  const reducedNames = config.subjectEvaluationReducedNames || {};
+  const colors = config.subjectEvaluationColors || {};
+  return Object.keys(colors).reduce((result, fullGrade) => {
+    result[getReducedSubjectEvaluation_(fullGrade, reducedNames)] = colors[fullGrade];
+    return result;
+  }, {});
+}
+
+function buildClosedCsvSubjectOrder_(evalRows, students) {
+  const firstSeen = uniqueInOrder_(evalRows.map(row => row.subjectFullName));
+  const common = [];
+  const nonCommon = [];
+  firstSeen.forEach(subject => {
+    const subjectRows = evalRows.filter(row => row.subjectFullName === subject);
+    const target = students.every(student => subjectRows.some(row =>
+      rowMatchesStudent_(row, student.studentFullName, student.studentAccountId)
+    ));
+    (target ? common : nonCommon).push(subject);
+  });
+  return common.concat(nonCommon);
+}
+
+function formatPercentage_(students, rowsByStudent, subject, grade, reducedNames) {
+  let count = 0;
+  students.forEach(student => {
+    const studentRows = rowsByStudent.get(student.studentAccountId) || rowsByStudent.get(student.studentFullName) || new Map();
+    const row = studentRows.get(subject);
+    if (row && getReducedSubjectEvaluation_(row.subjectEvaluation, reducedNames) === grade) count += 1;
+  });
+  const percentage = students.length ? (count / students.length) * 100 : 0;
+  return percentage / 100;
+}
+
+function getReducedSubjectEvaluation_(value, reducedNames) {
+  const cleanValue = String(value || '').trim();
+  return String(reducedNames && reducedNames[cleanValue] || cleanValue).trim();
+}
+
+function csvEscape_(value) {
+  const text = String(value === null || value === undefined ? '' : value);
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 function buildStudentReportFileName_(studentName, evaluationName) {
@@ -474,6 +1049,16 @@ function isAvailableEvaluationStatus_(status) {
 
 function isEvaluationGradeEditable_(evaluation) {
   return String(evaluation && evaluation.status || '').trim() === MODE_JUNTA_STATUS;
+}
+
+function isEvaluationClosed_(evaluation) {
+  return String(evaluation && evaluation.status || '').trim() === CLOSED_STATUS;
+}
+
+function rowMatchesStudent_(row, studentFullName, studentAccountId) {
+  const cleanAccountId = String(studentAccountId || '').trim();
+  return (cleanAccountId && row.studentAccountId === cleanAccountId) ||
+    normalizeText_(row.studentFullName) === normalizeText_(studentFullName);
 }
 
 function readEvaluationRegisters_() {
@@ -639,6 +1224,46 @@ function readTutoriaCommentsForGroup_(gradesSpreadsheet, evaluationSheetName, se
   return { byStudentAccountId, byStudentName };
 }
 
+function readTutoriaRowsForGroup_(gradesSpreadsheet, evaluationSheetName, selectedGroup) {
+  const sheet = getRequiredSheet_(gradesSpreadsheet, `${evaluationSheetName}${TUTORIA_SHEET_SUFFIX}`);
+  const values = sheet.getDataRange().getValues();
+  if (values.length < 2) return [];
+
+  const headers = values[0].map(header => String(header || '').trim());
+  const indexes = getTutoriaColumnIndexes_(headers);
+  return values.slice(1)
+    .map((row, offset) => buildTutoriaRow_(row, indexes, offset + 2))
+    .filter(row => row && rowIncludesGroup_(row, selectedGroup))
+    .sort((a, b) => compareText_(a.studentFullName, b.studentFullName));
+}
+
+function buildTutoriaRow_(row, indexes, sheetRow) {
+  const model = {
+    sheetRow,
+    group: getOptionalRowValue_(row, indexes.group),
+    groupName: getOptionalRowValue_(row, indexes.groupName),
+    teacherFullName: getOptionalRowValue_(row, indexes.teacherFullName),
+    teacherEmail: getOptionalRowValue_(row, indexes.teacherEmail),
+    subjectFullName: getOptionalRowValue_(row, indexes.subjectFullName),
+    studentFullName: String(row[indexes.studentFullName] || '').trim(),
+    tutoringGroup: String(row[indexes.tutoringGroup] || '').trim(),
+    tutoringGroups: splitCommaValues_(row[indexes.tutoringGroup]),
+    studentAccountId: String(row[indexes.studentAccountId] || '').trim(),
+    tutorComment: String(row[indexes.tutorComment] || ''),
+    bulletinUrl: getOptionalRowValue_(row, indexes.bulletinUrl),
+    email1: getOptionalRowValue_(row, indexes.email1),
+    sentEmail1: getOptionalRowValue_(row, indexes.sentEmail1),
+    email2: getOptionalRowValue_(row, indexes.email2),
+    sentEmail2: getOptionalRowValue_(row, indexes.sentEmail2)
+  };
+  model.sent = Boolean(model.sentEmail1 || model.sentEmail2);
+  return model.studentFullName && model.tutoringGroups.length ? model : null;
+}
+
+function getOptionalRowValue_(row, index) {
+  return index === undefined ? '' : String(row[index] || '').trim();
+}
+
 function saveTutoriaComment_(gradesSpreadsheet, evaluationSheetName, selectedGroup, selectedStudent, studentAccountId, tutorComment) {
   const sheet = getRequiredSheet_(gradesSpreadsheet, `${evaluationSheetName}${TUTORIA_SHEET_SUFFIX}`);
   const headers = readTutoriaHeaders_(sheet);
@@ -676,11 +1301,43 @@ function getTutoriaColumnIndexes_(headers) {
   });
 
   return {
+    group: indexes.get(normalizeHeader_('group')),
+    groupName: indexes.get(normalizeHeader_('group_name')),
+    teacherFullName: indexes.get(normalizeHeader_('teacher_full_name')),
+    teacherEmail: indexes.get(normalizeHeader_('teacher_email')),
+    subjectFullName: indexes.get(normalizeHeader_('subject_full_name')),
     tutoringGroup: indexes.get(normalizeHeader_(TUTORING_GROUP_HEADER)),
     studentFullName: indexes.get(normalizeHeader_('student_full_name')),
     studentAccountId: indexes.get(normalizeHeader_(STUDENT_ACCOUNT_ID_HEADER)),
-    tutorComment: indexes.get(normalizeHeader_(TUTOR_COMMENT_HEADER))
+    tutorComment: indexes.get(normalizeHeader_(TUTOR_COMMENT_HEADER)),
+    bulletinUrl: indexes.get(normalizeHeader_('Butlletí_url')),
+    email1: indexes.get(normalizeHeader_('email_1')),
+    sentEmail1: indexes.get(normalizeHeader_('enviat_email_1')),
+    email2: indexes.get(normalizeHeader_('email_2')),
+    sentEmail2: indexes.get(normalizeHeader_('enviat_email_2'))
   };
+}
+
+function updateTutoriaCells_(gradesSpreadsheet, evaluationSheetName, sheetRow, updates) {
+  const sheet = getRequiredSheet_(gradesSpreadsheet, `${evaluationSheetName}${TUTORIA_SHEET_SUFFIX}`);
+  const headers = readTutoriaHeaders_(sheet);
+  const indexes = buildHeaderIndexMap_(headers);
+  Object.keys(updates || {}).forEach(header => {
+    const index = getOrCreateTutoriaColumnIndex_(sheet, headers, indexes, header);
+    sheet.getRange(sheetRow, index + 1).setValue(updates[header]);
+  });
+}
+
+function getOrCreateTutoriaColumnIndex_(sheet, headers, indexes, header) {
+  const normalizedHeader = normalizeHeader_(header);
+  const existingIndex = indexes.get(normalizedHeader);
+  if (existingIndex !== undefined) return existingIndex;
+
+  const newIndex = headers.length;
+  headers.push(header);
+  indexes.set(normalizedHeader, newIndex);
+  sheet.getRange(1, newIndex + 1).setValue(header);
+  return newIndex;
 }
 
 function findTutoriaStudentRow_(sheet, indexes, selectedGroup, selectedStudent, studentAccountId) {
@@ -725,18 +1382,29 @@ function readEvaluationConfig_(gradesSpreadsheet, evaluationSheetName) {
   const sheet = getRequiredSheet_(gradesSpreadsheet, `${evaluationSheetName}_config`);
   const values = sheet.getDataRange().getValues();
   if (!values.length) {
-    return { subjectEvaluationOptions: [], subjectEvaluationColors: {}, conceptColumns: [] };
+    return { subjectEvaluationOptions: [], subjectEvaluationReducedNames: {}, subjectEvaluationColors: {}, conceptColumns: [] };
   }
 
   const headers = values[0].map(header => String(header || '').trim());
-  const hasColorColumn = normalizeHeader_(headers[2]) === normalizeHeader_('Color');
-  const firstConceptIndex = hasColorColumn ? 3 : 2;
+  const hasReducedColumn = normalizeHeader_(headers[2]) === normalizeHeader_('avaluacio_reduit');
+  const colorIndex = hasReducedColumn
+    ? (normalizeHeader_(headers[3]) === normalizeHeader_('Color') ? 3 : -1)
+    : (normalizeHeader_(headers[2]) === normalizeHeader_('Color') ? 2 : -1);
+  const firstConceptIndex = hasReducedColumn
+    ? (colorIndex === 3 ? 4 : 3)
+    : (colorIndex === 2 ? 3 : 2);
   const subjectEvaluationOptions = uniqueSorted_(values.slice(1)
     .map(row => String(row[1] || '').trim())
     .filter(Boolean));
+  const subjectEvaluationReducedNames = values.slice(1).reduce((reducedNames, row) => {
+    const option = String(row[1] || '').trim();
+    const reducedName = hasReducedColumn ? String(row[2] || '').trim() : '';
+    if (option && reducedName) reducedNames[option] = reducedName;
+    return reducedNames;
+  }, {});
   const subjectEvaluationColors = values.slice(1).reduce((colors, row) => {
     const option = String(row[1] || '').trim();
-    const color = hasColorColumn ? String(row[2] || '').trim() : '';
+    const color = colorIndex >= 0 ? String(row[colorIndex] || '').trim() : '';
     if (option && /^#[0-9a-fA-F]{6}$/.test(color)) colors[option] = color.toUpperCase();
     return colors;
   }, {});
@@ -749,7 +1417,7 @@ function readEvaluationConfig_(gradesSpreadsheet, evaluationSheetName) {
     }))
     .filter(concept => concept.header);
 
-  return { subjectEvaluationOptions, subjectEvaluationColors, conceptColumns };
+  return { subjectEvaluationOptions, subjectEvaluationReducedNames, subjectEvaluationColors, conceptColumns };
 }
 
 function getConceptColumnsFromHeaders_(headers) {

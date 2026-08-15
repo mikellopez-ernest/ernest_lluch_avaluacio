@@ -374,7 +374,7 @@
       }
 
       .dynamic-row.subject-value-row {
-        grid-template-columns: 1fr 36px 36px;
+        grid-template-columns: 1fr minmax(96px, 150px) 36px 36px;
       }
 
       .color-picker {
@@ -478,6 +478,14 @@
           font-size: 13px;
           font-weight: 700;
           margin-left: 8px;
+        }
+
+        .dynamic-row.subject-value-row {
+          grid-template-columns: 1fr;
+        }
+
+        .dynamic-row.subject-value-row .color-picker {
+          justify-self: start;
         }
       }
     </style>
@@ -854,7 +862,14 @@
         const input = document.createElement('input');
         input.type = 'text';
         input.value = value || '';
+        input.placeholder = 'Valor';
         input.dataset.role = 'subject-value';
+
+        const reducedInput = document.createElement('input');
+        reducedInput.type = 'text';
+        reducedInput.placeholder = 'Reduït';
+        reducedInput.dataset.role = 'subject-reduit';
+        reducedInput.setAttribute('aria-label', 'Reduït');
 
         const colorInput = document.createElement('input');
         colorInput.type = 'color';
@@ -863,7 +878,7 @@
         colorInput.dataset.role = 'subject-color';
         colorInput.setAttribute('aria-label', `Color per a ${value || 'valor de matèria'}`);
 
-        row.append(input, colorInput, createDeleteButton('Eliminar valor de matèria', () => row.remove()));
+        row.append(input, reducedInput, colorInput, createDeleteButton('Eliminar valor de matèria', () => row.remove()));
         container.appendChild(row);
       }
 
@@ -932,6 +947,7 @@
         const subjectValues = Array.from(document.querySelectorAll('#subject-values .subject-value-row'))
           .map(row => ({
             value: row.querySelector('[data-role="subject-value"]').value.trim(),
+            reduit: row.querySelector('[data-role="subject-reduit"]').value.trim(),
             color: row.querySelector('[data-role="subject-color"]').value
           }))
           .filter(item => item.value);

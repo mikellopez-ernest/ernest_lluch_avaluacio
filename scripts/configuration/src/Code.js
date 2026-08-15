@@ -564,7 +564,7 @@ function applyEvaluationStatusValidation_(sheet, rowNumber) {
 
 function writeEvaluationConfig_(sheet, subjectItems, concepts) {
   const creationDate = Utilities.formatDate(new Date(), 'Europe/Madrid', 'yyyyMMdd:HHmm');
-  const headers = ['data de creació', 'Avaluació de les matèries', 'Color'].concat(
+  const headers = ['data de creació', 'Avaluació de les matèries', 'avaluacio_reduit', 'Color'].concat(
     concepts.map(concept => concept.name)
   );
   const maxRows = Math.max(
@@ -578,6 +578,7 @@ function writeEvaluationConfig_(sheet, subjectItems, concepts) {
     values.push([
       index === 0 ? creationDate : '',
       subjectItems[index] ? subjectItems[index].value : '',
+      subjectItems[index] ? subjectItems[index].reduit : '',
       subjectItems[index] ? subjectItems[index].color : '',
       ...concepts.map(concept => concept.options[index] || '')
     ]);
@@ -948,6 +949,7 @@ function sanitizeSubjectEvaluationItems_(values) {
     seen.add(key);
     sanitized.push({
       value,
+      reduit: String(item && typeof item === 'object' ? item.reduit : '').trim(),
       color: sanitizeHexColor_(item && typeof item === 'object' ? item.color : '')
     });
   });

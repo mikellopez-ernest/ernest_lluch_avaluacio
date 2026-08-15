@@ -59,9 +59,9 @@ Evaluation expansion reads Dinantia accounts once, filters `Student` accounts, a
 
 During evaluation creation, the page polls progress by run ID and shows the latest stage in the status area.
 
-Generated evaluation config sheets include subject-evaluation colors in the
-`Color` column. Generated evaluation sheets copy the `subjects_cache.group`
-array and copy the teacher email next to the teacher name. Rows where
+Generated evaluation config sheets include subject-evaluation reduced labels in
+`avaluacio_reduit` and colors in `Color`. Generated evaluation sheets copy the
+`subjects_cache.group` array and copy the teacher email next to the teacher name. Rows where
 `subjects_cache.materia_clau` is true are written to `{sheet_name}_tutoria`
 instead of the main sheet. The main sheet fills `grup_tutoria` from the matching
 tutoria row, always includes a `PI` checkbox column defaulting to false, and

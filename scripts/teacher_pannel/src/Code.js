@@ -73,6 +73,7 @@ function getTeacherEvaluationData(payload) {
       groups: [],
       rows: [],
       subjectEvaluationOptions: config.subjectEvaluationOptions,
+      subjectEvaluationReducedNames: config.subjectEvaluationReducedNames,
       subjectEvaluationColors: config.subjectEvaluationColors,
       conceptColumns: mergeConceptColumns_(table.conceptColumns, config.conceptColumns),
       message: 'No tens alumnes assignats en aquesta avaluació.'
@@ -86,6 +87,7 @@ function getTeacherEvaluationData(payload) {
       groups.concat(row.groupNames || []), [])),
     rows: teacherRows,
     subjectEvaluationOptions: config.subjectEvaluationOptions,
+    subjectEvaluationReducedNames: config.subjectEvaluationReducedNames,
     subjectEvaluationColors: config.subjectEvaluationColors,
     conceptColumns: mergeConceptColumns_(table.conceptColumns, config.conceptColumns),
     message: ''
@@ -262,21 +264,36 @@ function readEvaluationConfig_(gradesSpreadsheet, evaluationSheetName) {
   if (!values.length) {
     return {
       subjectEvaluationOptions: [],
+      subjectEvaluationReducedNames: {},
       subjectEvaluationColors: {},
       conceptColumns: []
     };
   }
 
   const headers = values[0].map(header => String(header || '').trim());
-  const hasColorColumn = normalizeHeader_(headers[2]) === normalizeHeader_('Color');
-  const firstConceptIndex = hasColorColumn ? 3 : 2;
+  const hasReducedColumn = normalizeHeader_(headers[2]) === normalizeHeader_('avaluacio_reduit');
+  const colorIndex = hasReducedColumn
+    ? (normalizeHeader_(headers[3]) === normalizeHeader_('Color') ? 3 : -1)
+    : (normalizeHeader_(headers[2]) === normalizeHeader_('Color') ? 2 : -1);
+  const firstConceptIndex = hasReducedColumn
+    ? (colorIndex === 3 ? 4 : 3)
+    : (colorIndex === 2 ? 3 : 2);
   const subjectEvaluationOptions = uniqueSorted_(values.slice(1)
     .map(row => String(row[1] || '').trim())
     .filter(Boolean));
+  const subjectEvaluationReducedNames = values.slice(1)
+    .reduce((reducedNames, row) => {
+      const option = String(row[1] || '').trim();
+      const reducedName = hasReducedColumn ? String(row[2] || '').trim() : '';
+      if (option && reducedName) {
+        reducedNames[option] = reducedName;
+      }
+      return reducedNames;
+    }, {});
   const subjectEvaluationColors = values.slice(1)
     .reduce((colors, row) => {
       const option = String(row[1] || '').trim();
-      const color = hasColorColumn ? String(row[2] || '').trim() : '';
+      const color = colorIndex >= 0 ? String(row[colorIndex] || '').trim() : '';
       if (option && /^#[0-9a-fA-F]{6}$/.test(color)) {
         colors[option] = color.toUpperCase();
       }
@@ -293,6 +310,7 @@ function readEvaluationConfig_(gradesSpreadsheet, evaluationSheetName) {
 
   return {
     subjectEvaluationOptions,
+    subjectEvaluationReducedNames,
     subjectEvaluationColors,
     conceptColumns
   };
