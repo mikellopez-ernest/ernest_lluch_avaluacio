@@ -7,7 +7,7 @@ Canonical behavior is specified in
 
 ## Apps Script
 
-- Script ID: `1I_6-JdbYTk2leRBGJKx-eeEnKxy4EpkJVpS1nApQJRd0OdRZqDyezY8M`
+- Script ID: stored only in the local ignored `.clasp.json`; do not commit it.
 
 ## Endpoint
 
@@ -46,6 +46,14 @@ the dirty `sheetRow` values currently visible in the table and returns
 The special marker `ADMIN_PRIVILEGES` enables admin-only actions but is not a
 real group and is never shown in the group selector. When present, the UI shows
 an informational `Admin` badge beside the title.
+
+## Private Script Properties
+
+These values must be configured in Apps Script project properties and must not
+be committed:
+
+- `db`: database registry spreadsheet ID
+- `DRIVE_FOLDER_TUTOR`: Drive folder ID used for generated tutor bulletins
 
 ## Public Functions
 

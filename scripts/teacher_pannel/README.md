@@ -9,7 +9,7 @@ sheet contracts are specified in
 
 ## Apps Script
 
-- Script ID: `1CLBSkbrZagzWSX8VxBot_sPZaQVBnexGdocsCm-_xeMTRqoIgI_hpoby`
+- Script ID: stored only in the local ignored `.clasp.json`; do not commit it.
 
 ## Endpoint
 
@@ -96,7 +96,7 @@ Deploy as a web app with:
 
 | Setting | Value |
 | --- | --- |
-| Execute as | Owner / `admindomini@iernestlluch.cat` |
+| Execute as | Owner / me |
 | Who has access | Users in `iernestlluch.cat` |
 
 The script also checks the active user's email domain and rejects users outside `@iernestlluch.cat`.

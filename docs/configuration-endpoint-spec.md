@@ -9,7 +9,7 @@ Dinantia request rules are defined in [dinantia-api-spec.md](dinantia-api-spec.m
 | Field | Value |
 | --- | --- |
 | Folder | `scripts/configuration` |
-| Script ID | `1qj0U_bBSfrHpxSzXt5goCaloM_npZAZcRiw6IiGdLMI_XrrP595eiehD` |
+| Script ID | Stored only in the local ignored `.clasp.json`; do not commit it. |
 | Page title | `Configuració` |
 | Execute as | Owner / me |
 | Access | Users in `iernestlluch.cat` |
@@ -41,10 +41,61 @@ All other functions must be private helpers with a trailing `_`.
 | `Grades` -> `avaluacions` | Evaluation registry. |
 | `Horaris` -> `GPU001` | Timetable source for cache rebuild. |
 | `Dinantia` -> `dinantia_2_dades_alumnes` | Local group-code to Dinantia display-name mapping. |
+| `Dinantia` -> `teachers_2_dinantia` | Responsibility-to-visible-groups mapping and `ADMIN_PRIVILEGES` marker. |
 | `Dades de professors` -> `Llista` | Teacher names, codes, and institutional emails. |
+| `Dades de professors` -> `leave_absence` | Substitute-to-original-teacher resolution. |
 | `Càrrega lectiva` -> `assignatures` | Subject display names. |
+| `Càrrega lectiva` -> `carrecs` | Teacher responsibility lookup. |
 | Dinantia API `/v1/groups/index` | Group IDs for `Grup d'alumnes per avaluar`. |
 | Dinantia API `/v1/accounts/index` | Student expansion for generated evaluation sheets. |
+
+## Permissions
+
+The web app deployment may be opened by any `@iernestlluch.cat` account, but
+the configuration data exposed inside the page is responsibility-filtered.
+
+Permission resolution must match the evaluation-session app:
+
+1. Read the active user email from `Session.getActiveUser().getEmail()`.
+2. Find the teacher in `Dades de professors` -> `Llista` by `CORREU INSTIT`.
+3. If the teacher is a substitute (`SUBST? = TRUE`), resolve the original
+   teacher through an active row in `Dades de professors` -> `leave_absence`.
+4. Read the effective teacher responsibilities from `Càrrega lectiva` -> `carrecs`.
+5. Match those responsibilities against `Dinantia` -> `teachers_2_dinantia.carrec`.
+6. Split `teachers_2_dinantia.dinantia_group_names` by comma.
+7. Values equal to `ADMIN_PRIVILEGES` grant admin privileges and are never
+   treated as visible groups.
+8. All other values are visible Dinantia groups for the current user.
+
+The configuration group selector is still built from local timetable group
+codes in `subjects_cache.group` (`1A`, `2B`, etc.). To apply Dinantia
+permissions, the server maps visible Dinantia groups to cache group codes by
+reading each cache row's `group` and aligned `group_name` values. A cache group
+code is visible when either:
+
+1. The local code itself is listed in the resolved visible groups, or
+2. The corresponding value in `subjects_cache.group_name` is listed in the
+   resolved visible groups.
+
+For multi-group rows, alignment is positional. For example:
+
+```text
+group = 2A,2B
+group_name = 2n ESO A, 2n ESO B
+```
+
+A user allowed to see `2n ESO A` can see/edit `2A`; that does not automatically
+grant access to `2B`.
+
+Server-side enforcement is mandatory:
+
+1. `getConfigurationData` only returns visible group codes and rows for those
+   group codes.
+2. `saveSubjectsCacheEdits` rejects saves for non-visible group codes.
+3. `buildSubjectsCache`, `createEvaluation`, and
+   `getEvaluationCreationStatus` require `ADMIN_PRIVILEGES`.
+4. `createEvaluation` also rejects selected group codes not visible to the
+   admin user.
 
 ## Page Behavior
 
@@ -54,8 +105,10 @@ The page shows:
 
 1. A group-code selector, empty by default.
 2. Editable rows for the selected group code.
-3. A floating refresh button for rebuilding `subjects_cache`.
-4. A floating `Crear avaluació` button.
+3. A floating refresh button for rebuilding `subjects_cache`, visible only to
+   users with `ADMIN_PRIVILEGES`.
+4. A floating `Crear avaluació` button, visible only to users with
+   `ADMIN_PRIVILEGES`.
 5. A row-level red delete button that appears on hover/focus.
 6. `+` and save buttons under the editable rows.
 
@@ -65,9 +118,10 @@ applies to initial loading, saving, cache rebuild, and evaluation creation.
 
 ## Cache Editor
 
-The group selector is built from individual values in `subjects_cache.group`.
-Rows with comma-separated groups, such as `1F,2F`, appear when either `1F` or
-`2F` is selected.
+The group selector is built from individual visible values in
+`subjects_cache.group`. Rows with comma-separated groups, such as `1F,2F`,
+appear when either `1F` or `2F` is selected, provided the current user is
+allowed to see that specific group code.
 
 Group order is first-appearance order from `subjects_cache`, reading the sheet
 top to bottom and splitting comma-separated group arrays left to right. Duplicate
@@ -246,6 +300,10 @@ generation rule.
 ### Progress Logging
 
 Each run uses a per-run ID. Log and publish progress for:
+
+Progress polling is transient and must use `CacheService`, not script
+properties. The configuration data loader deletes legacy
+`evaluation_progress_...` script properties if any exist.
 
 | Stage | Meaning |
 | --- | --- |

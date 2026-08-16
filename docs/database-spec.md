@@ -43,9 +43,9 @@ const tablesSheet = registrySpreadsheet.getSheetByName('tables');
 | Logical table | Sheets used |
 | --- | --- |
 | `Dades de professors` | `Llista`, `leave_absence` |
-| `Càrrega lectiva` | `assignatures` |
+| `Càrrega lectiva` | `assignatures`, `carrecs` |
 | `Horaris` | `GPU001` |
-| `Dinantia` | `dinantia_2_dades_alumnes` |
+| `Dinantia` | `dinantia_2_dades_alumnes`, `teachers_2_dinantia` |
 | `Grades` | `subjects_cache`, `avaluacions`, generated evaluation sheets, generated evaluation config sheets, generated tutoria sheets |
 
 The old `Grades` -> `subjects` table is obsolete and must not be used for the new configuration workflow.
@@ -205,6 +205,29 @@ Use `short_name` or the raw subject code as the stable internal value.
 
 Use `full_name` as the user-facing display value.
 
+### Sheet: carrecs
+
+`carrecs` maps teacher responsibilities to assigned teachers.
+
+Row 1 contains headers. Data starts in row 2.
+
+Required headers:
+
+| Header | Meaning |
+| --- | --- |
+| `carrec` | Responsibility name/code. |
+| `asignado?` / `assignat?` / `asignado` | Full teacher name assigned to the responsibility. |
+
+Teacher responsibility lookup:
+
+1. Build the teacher full name from `Dades de professors` -> `Llista`.
+2. Normalize accents and case.
+3. Match it against `asignado?`, `assignat?`, or `asignado`.
+4. Collect each matching `carrec`.
+
+These responsibilities are used by web apps to resolve Dinantia group
+visibility through `Dinantia` -> `teachers_2_dinantia`.
+
 ## Table: Horaris
 
 Logical table name in registry: `Horaris`
@@ -296,6 +319,32 @@ one row, the current implementation keeps the first mapping it reads and ignores
 later duplicates. If a cache row resolves to an unexpected group name, first
 check this mapping table for wrong aliases, duplicate aliases, or aliases stored
 under the wrong Dinantia group.
+
+### Sheet: teachers_2_dinantia
+
+`teachers_2_dinantia` maps responsibilities to visible Dinantia groups and
+admin privileges.
+
+Row 1 contains headers. Data starts in row 2.
+
+Required headers:
+
+| Header | Meaning |
+| --- | --- |
+| `carrec` | Responsibility name/code. Matches `Càrrega lectiva` -> `carrecs.carrec`. |
+| `dinantia_group_names` | Comma-separated Dinantia group names/IDs or `ADMIN_PRIVILEGES`. |
+
+Visibility rules:
+
+1. Resolve the current teacher's responsibilities from `Càrrega lectiva` -> `carrecs`.
+2. Match each responsibility to `teachers_2_dinantia.carrec`.
+3. Split `dinantia_group_names` by comma.
+4. Treat `ADMIN_PRIVILEGES` as an admin marker, not as a group.
+5. Treat every other split value as a visible Dinantia group for that teacher.
+
+The configuration endpoint maps these visible Dinantia group values to local
+`subjects_cache.group` codes through the aligned `subjects_cache.group_name`
+values.
 
 ### subjects_cache Post-Processing Rules
 

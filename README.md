@@ -43,11 +43,21 @@ This repository contains Google Apps Script projects organized by script.
 
 ## Scripts
 
-| Script | Apps Script ID |
+| Script | Local folder |
 | --- | --- |
-| av_session | `1I_6-JdbYTk2leRBGJKx-eeEnKxy4EpkJVpS1nApQJRd0OdRZqDyezY8M` |
-| configuration | `1qj0U_bBSfrHpxSzXt5goCaloM_npZAZcRiw6IiGdLMI_XrrP595eiehD` |
-| teacher_pannel | `1CLBSkbrZagzWSX8VxBot_sPZaQVBnexGdocsCm-_xeMTRqoIgI_hpoby` |
+| av_session | `scripts/av_session` |
+| configuration | `scripts/configuration` |
+| teacher_pannel | `scripts/teacher_pannel` |
+
+Apps Script project IDs are intentionally not stored in public documentation.
+Keep them only in each local, ignored `.clasp.json` file.
+
+## Security
+
+Do not commit Apps Script IDs, deployment IDs, spreadsheet IDs, Drive folder
+IDs, API credentials, `.clasp.json`, `.clasprc.json`, or local environment
+files. Runtime identifiers and credentials must live in local ignored files or
+Apps Script project properties.
 
 ## Working With A Script
 

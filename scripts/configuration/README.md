@@ -9,7 +9,7 @@ Database sheet contracts are specified in
 
 ## Apps Script
 
-- Script ID: `1qj0U_bBSfrHpxSzXt5goCaloM_npZAZcRiw6IiGdLMI_XrrP595eiehD`
+- Script ID: stored only in the local ignored `.clasp.json`; do not commit it.
 
 ## Endpoint
 
@@ -26,6 +26,20 @@ If a cache row contains a comma-separated group array such as `1F,2F`, that
 same row appears when either `1F` or `2F` is selected.
 Group lists keep first-appearance order from `subjects_cache`, reading rows top
 to bottom and comma-separated arrays left to right.
+
+The deployment is available to `@iernestlluch.cat` users, but the visible group
+codes are filtered by the same responsibility permissions used by the evaluation
+session app:
+
+- active user email -> `Dades de professors` -> `Llista.CORREU INSTIT`
+- substitute resolution through `Dades de professors` -> `leave_absence`
+- effective teacher responsibilities from `Càrrega lectiva` -> `carrecs`
+- visible Dinantia groups from `Dinantia` -> `teachers_2_dinantia`
+
+Those Dinantia groups are mapped back to local cache group codes through
+`subjects_cache.group_name`. The refresh and `Crear avaluació` bubbles are only
+shown to users with `ADMIN_PRIVILEGES`, and the same rule is enforced server
+side.
 
 When a group is selected, the page shows editable dropdown rows for:
 

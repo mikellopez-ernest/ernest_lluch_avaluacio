@@ -19,6 +19,11 @@ This file tracks future work and open decisions only. Implemented specifications
   page while saving.
 - The configuration endpoint can save free-text subject names through
   `Afegir una nova matèria`.
+- The configuration endpoint filters visible group codes through
+  `Dades de professors` -> `Llista`, substitute resolution, `Càrrega lectiva`
+  -> `carrecs`, and `Dinantia` -> `teachers_2_dinantia`.
+- The configuration endpoint shows and allows refresh / evaluation creation
+  only for users with `ADMIN_PRIVILEGES`.
 - The endpoint can create evaluation sheets from `subjects_cache`.
 - Evaluation creation lets users choose which group codes are included.
 - Evaluation config sheets store subject-evaluation full names, reduced names,

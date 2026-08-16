@@ -21,7 +21,7 @@ The endpoint must always read `Grades` -> `avaluacions` first to know which gene
 | Field | Value |
 | --- | --- |
 | Folder | `scripts/teacher_pannel` |
-| Script ID | `1CLBSkbrZagzWSX8VxBot_sPZaQVBnexGdocsCm-_xeMTRqoIgI_hpoby` |
+| Script ID | Stored only in the local ignored `.clasp.json`; do not commit it. |
 | Page title | `Avaluació` |
 
 ## Deployment
@@ -30,12 +30,14 @@ Deploy as a web app.
 
 | Setting | Value |
 | --- | --- |
-| Execute as | Owner / `admindomini@iernestlluch.cat` |
+| Execute as | Owner / me |
 | Who has access | Users in `iernestlluch.cat` |
 
 The script also checks the active user's email domain and rejects users outside `@iernestlluch.cat`.
 
-Local `.clasp.json` files are intentionally ignored by git. The script folder must keep a local `.clasp.json` pointing to the script ID above so `clasp push` and `clasp deploy` target the correct Apps Script project.
+Local `.clasp.json` files are intentionally ignored by git. The script folder
+must keep a local `.clasp.json` pointing to the correct Apps Script project so
+`clasp push` and `clasp deploy` target the right script.
 
 ## Data Sources
 

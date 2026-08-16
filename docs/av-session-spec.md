@@ -20,7 +20,7 @@ to its state:
 | Field | Value |
 | --- | --- |
 | Folder | `scripts/av_session` |
-| Script ID | `1I_6-JdbYTk2leRBGJKx-eeEnKxy4EpkJVpS1nApQJRd0OdRZqDyezY8M` |
+| Script ID | Stored only in the local ignored `.clasp.json`; do not commit it. |
 | Page title | `Sessió d'avaluació` |
 
 Deploy as a web app, not as a library.
@@ -273,7 +273,9 @@ visible group. The browser keeps them cached by `student_account_id` and by
 `student_full_name`, so changing between students does not require another
 server call.
 
-`DRIVE_FOLDER_TUTOR` is the Drive base folder for tutor bulletin storage.
+`DRIVE_FOLDER_TUTOR` is a script property containing the Drive base folder ID
+for tutor bulletin storage. The actual folder ID must not be committed to
+source or docs.
 
 ## Closed Evaluation Table
 
@@ -406,7 +408,7 @@ When the user clicks `Generar` in the `Butlletí` column of a `Tancada`
 evaluation, the app generates the student PDF bulletin and stores it in Drive.
 
 The storage root is the Drive folder identified by the `DRIVE_FOLDER_TUTOR`
-constant.
+script property.
 
 For the selected student/group:
 
