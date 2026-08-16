@@ -368,6 +368,7 @@ The cache-building function must be public so it can be run directly.
 | H | `subject_full_name` | Resolved subject display name from `assignatures.full_name`. |
 | I | `subject_dinantia_group_av` | Dinantia group ID selected for assessment. Defaults to `group_name` when rebuilt from `GPU001`. |
 | J | `materia_clau` | Boolean checkbox. Marks the cache row used to derive `grup_tutoria` for each student. |
+| K | `order` | Optional numeric display order. Lower numbers appear first. Empty values sort last. |
 
 Important: Dinantia group IDs are strings and can look like human-readable group names, for example `1r ESO A`. Do not assume numeric IDs.
 
@@ -393,10 +394,11 @@ exact normalized group codes, not use substring matching.
 14. Resolve teacher, teacher email, and subject display values.
 15. Set `materia_clau = TRUE` for rows whose resolved subject is `TUTORIA`; set all other rows to `FALSE`.
 16. Keep only one `materia_clau = TRUE` row per individual local group code.
-17. Delete rows without a resolved `group_name`.
-18. Sort rows by `group_name`.
-19. Clear/rewrite `Grades` -> `subjects_cache` entirely.
-20. Write headers, all derived rows, and a checkbox validation rule on column J.
+17. Set `order = 0` for default `TUTORIA` / `materia_clau` rows; leave other rows blank unless manually edited later.
+18. Delete rows without a resolved `group_name`.
+19. Sort rows by `group_name`, then `order`, then subject and teacher.
+20. Clear/rewrite `Grades` -> `subjects_cache` entirely.
+21. Write headers, all derived rows, and a checkbox validation rule on column J.
 
 The first pass uses row counts as the number of scheduled hours for each
 teacher inside a `group + subject` combination. A teacher with fewer rows/hours
@@ -480,6 +482,10 @@ subjects_cache.subject_full_name = Càrrega lectiva.assignatures.full_name
 where Horaris.GPU001 column D = Càrrega lectiva.assignatures.short_name
 ```
 
+The configuration endpoint can also save manual free-text subject names. In
+that case `subject_full_name` stores the typed name and `mat_reduit` may remain
+blank unless the typed value matches an existing subject catalog row.
+
 `subject_dinantia_group_av`:
 
 ```text
@@ -509,6 +515,18 @@ unchecked by default. The configuration endpoint may change this manually, but
 only one row may be checked for each individual value in `subjects_cache.group`.
 For multi-group rows, one checked row may be the key row for every group code
 contained in that comma-separated `group` array.
+
+`order`:
+
+```text
+subjects_cache.order = optional numeric subject order
+```
+
+Lower values appear first in every consumer that displays subjects or generated
+evaluation rows. `order = 0` is reserved for the default tutorial/key subject so
+it appears first in the configuration page. Empty or non-numeric values are
+treated as blank and sorted after numbered rows. If two rows have the same
+order, sort by `subject_full_name`, then `teacher_full_name`.
 
 If group, teacher, or subject references cannot be resolved, the cache builder should preserve the source code and leave the unresolved display value blank or fall back to the source code when a user-facing value is required.
 
@@ -583,6 +601,8 @@ For each `subjects_cache` row:
 8. Dedupe students per cache row by Dinantia account ID.
 9. If `subjects_cache.materia_clau = TRUE`, create tutoria-sheet rows.
 10. Otherwise, create one main-sheet row per matched student.
+11. Copy `subjects_cache.order` into the generated hidden `subject_order`
+    metadata column so the order is fixed for this evaluation.
 
 Main sheet columns:
 
@@ -598,7 +618,8 @@ Main sheet columns:
 | H | `PI` | Boolean checkbox column. Always created. Default value `false`. |
 | I | `Avaluació de la matèria` | User-editable dropdown using config column B values. Reduced labels are stored in config column C and colors in config column D. |
 | J onward | Extra concept name | One column per extra concept from the config sheet. Dropdown validation when the concept has options; open text when it has none. |
-| Last hidden column | `student_account_id` | Dinantia student account ID. Hidden from normal users and reserved for sync workflows. |
+| Hidden metadata column | `student_account_id` | Dinantia student account ID. Hidden from normal users and reserved for sync workflows. |
+| Hidden metadata column | `subject_order` | Numeric order copied from `subjects_cache.order`. Used by teacher panels, session pages, PDF bulletins, and XLSX/CSV acta exports. |
 
 Teacher-facing UIs may use config column D colors to color the generated sheet
 row according to the selected `Avaluació de la matèria` value. They may use
@@ -632,7 +653,7 @@ The main evaluation sheet must be formatted after writing:
 4. Wrap cell text.
 5. Auto-resize columns.
 6. Apply checkbox validation to `PI`.
-7. Hide `student_account_id`.
+7. Hide `student_account_id` and `subject_order`.
 
 Teacher-facing UIs should render `PI` as a fixed narrow checkbox column rather
 than an adaptive text column.
@@ -659,8 +680,9 @@ Tutoria sheet columns:
 | F | `student_full_name` | Full student name from Dinantia. |
 | G | `grup_tutoria` | Tutorial group display value for the student, derived from this sheet's `group_name`. |
 | H | `student_account_id` | Dinantia student account ID. |
-| I | `Comentari_tutor` | Blank at creation time. Reserved for tutor comments. |
-| J | `Butlletí_url` | Blank at creation time. Reserved for bulletin/report URL. |
+| I | `subject_order` | Numeric order copied from `subjects_cache.order`. Hidden metadata. |
+| J | `Comentari_tutor` | Blank at creation time. Reserved for tutor comments. |
+| K | `Butlletí_url` | Blank at creation time. Reserved for bulletin/report URL. |
 
 The tutoria sheet must be written in bulk and formatted after writing:
 
@@ -669,6 +691,7 @@ The tutoria sheet must be written in bulk and formatted after writing:
 3. Apply a light header background.
 4. Wrap cell text.
 5. Auto-resize columns.
+6. Hide `subject_order`.
 
 Dinantia students must be indexed by group ID in memory while creating the sheet so the same group is not fetched repeatedly.
 

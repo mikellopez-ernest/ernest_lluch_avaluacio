@@ -79,7 +79,8 @@ Editable fields:
 | UI label | Cache column | Options |
 | --- | --- | --- |
 | `Tutoria` | `materia_clau` | Radio button. Only one row can be selected per group code. |
-| `Assignatura` | `subject_full_name` | Unique cache subject names, sorted. |
+| `Ordre` | `order` | Numeric input. Lower values appear first; blank values appear last. |
+| `Assignatura` | `subject_full_name` | Unique cache subject names, sorted, plus `Afegir una nova matèria` for custom free-text names. |
 | `Professor` | `teacher_full_name` | Unique cache teacher names, sorted. |
 | `Grup d'alumnes per avaluar` | `subject_dinantia_group_av` | Dinantia group IDs from `/v1/groups/index`, sorted. |
 
@@ -94,7 +95,9 @@ Save rules:
 7. Deleted row IDs are removed from `subjects_cache`.
 8. If a dirty/new row has `materia_clau = TRUE`, the server clears `materia_clau` from every other row containing the selected group code.
 9. The server normalizes `materia_clau` so only one row remains checked for each individual group code.
-10. The server rewrites `subjects_cache` sorted by `group_name`.
+10. The server saves `order` as a number, or blank when the input is empty or invalid.
+11. If `Assignatura` is a custom free-text value, save it directly in `subject_full_name`; `mat_reduit` remains blank unless the name matches the subject catalog.
+12. The server rewrites `subjects_cache` sorted by `group_name`, then `order`, then subject and teacher.
 
 ## Cache Rebuild
 
@@ -134,8 +137,9 @@ Rebuild algorithm:
 10. Fill `subject_dinantia_group_av` with `group_name` as the rebuild fallback.
 11. Set `materia_clau = TRUE` for TUTORIA rows by default and `FALSE` for all other rows.
 12. Keep only one `materia_clau = TRUE` row per individual local group code.
-13. Drop rows without `group_name`.
-14. Rewrite `subjects_cache`.
+13. Set `order = 0` for TUTORIA rows by default and leave other order values blank.
+14. Drop rows without `group_name`.
+15. Rewrite `subjects_cache` sorted by `group_name`, then `order`, then subject and teacher.
 
 ## Create Evaluation Modal
 
@@ -210,6 +214,7 @@ For each `subjects_cache` row:
 9. If `subjects_cache.materia_clau = TRUE`, write the generated rows to `{sheet_name}_tutoria`, not to `{sheet_name}`.
 10. If `subjects_cache.materia_clau != TRUE`, write one generated main-sheet row per deduped student.
 11. Fill `grup_tutoria` for every generated main row from the student's tutoria row.
+12. Copy `subjects_cache.order` into hidden `subject_order` metadata columns so downstream pages and exports can preserve the subject order.
 
 Important invariant: if a source cache row has `group = 2A,2B,2C,2D,2E`, the
 generated evaluation rows must preserve that exact group array in the generated
@@ -234,8 +239,9 @@ generation rule.
 | F | `student_full_name` | Same generated field as the main sheet. |
 | G | `grup_tutoria` | Same generated tutorial group metadata. |
 | H | `student_account_id` | Dinantia student account ID. |
-| I | `Comentari_tutor` | Blank at creation time. |
-| J | `Butlletí_url` | Blank at creation time. |
+| I | `subject_order` | Hidden numeric order copied from `subjects_cache.order`. |
+| J | `Comentari_tutor` | Blank at creation time. |
+| K | `Butlletí_url` | Blank at creation time. |
 
 ### Progress Logging
 

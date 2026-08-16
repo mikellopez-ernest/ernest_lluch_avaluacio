@@ -30,12 +30,17 @@ to bottom and comma-separated arrays left to right.
 When a group is selected, the page shows editable dropdown rows for:
 
 - `Tutoria`
+- `Ordre`
 - `Assignatura`
 - `Professor`
 - `Grup d'alumnes per avaluar`
 
 `Tutoria` is a radio button backed by `subjects_cache.materia_clau`. Only one
 row can be selected as the key subject for each individual group code.
+`Ordre` is a numeric field backed by `subjects_cache.order`; lower values appear
+first, and blank values appear last.
+`Assignatura` normally uses the subject list, but users can choose `Afegir una
+nova matèria` and type a free-text subject name.
 
 Manual edits are saved directly to `Grades` -> `subjects_cache`.
 Rows can also be deleted from the editor and are removed from `subjects_cache` on save.
@@ -65,7 +70,7 @@ Generated evaluation config sheets include subject-evaluation reduced labels in
 `subjects_cache.materia_clau` is true are written to `{sheet_name}_tutoria`
 instead of the main sheet. The main sheet fills `grup_tutoria` from the matching
 tutoria row, always includes a `PI` checkbox column defaulting to false, and
-includes a hidden `student_account_id` column.
+includes hidden `student_account_id` and `subject_order` columns.
 
 `Grades` -> `avaluacions` stores `Estat = Creada` for new evaluations and validates the status cell against the configured workflow states.
 
@@ -86,7 +91,8 @@ When the cache is rebuilt, the script:
 7. Resolves teacher names and emails from `Dades de professors` -> `Llista`.
 8. Resolves subject names from `Càrrega lectiva` -> `assignatures`.
 9. Sets `materia_clau` true for TUTORIA rows by default and false for other rows.
-10. Rewrites `Grades` -> `subjects_cache` entirely, including checkbox validation on `materia_clau`.
+10. Sets `order = 0` for TUTORIA rows by default and leaves other order values blank.
+11. Rewrites `Grades` -> `subjects_cache` entirely, including checkbox validation on `materia_clau`.
 
 The endpoint treats `subjects_cache.group` as a comma-separated array of group
 codes. New rows added from the editor use the currently selected group code.

@@ -18,6 +18,7 @@ const CLOSED_STATUS = 'Tancada';
 const AVAILABLE_EVALUATION_STATUSES = [TEACHER_EVALUATION_STATUS, MODE_JUNTA_STATUS, CLOSED_STATUS];
 const ADMIN_PRIVILEGES_MARKER = 'ADMIN_PRIVILEGES';
 const STUDENT_ACCOUNT_ID_HEADER = 'student_account_id';
+const SUBJECT_ORDER_HEADER = 'subject_order';
 const SUBJECT_EVALUATION_HEADER = 'Avaluació de la matèria';
 const TUTORING_GROUP_HEADER = 'grup_tutoria';
 const TUTOR_COMMENT_HEADER = 'Comentari_tutor';
@@ -224,7 +225,7 @@ function getAvSessionEvaluationData(payload) {
     evaluation,
     group: selectedGroup,
     students: buildStudentOptions_(rowsForGroup),
-    subjects: uniqueSorted_(rowsForGroup.map(row => row.subjectFullName)),
+    subjects: uniqueSubjectsByOrder_(rowsForGroup),
     rows: rowsForGroup,
     tutorCommentsByStudentAccountId: tutorComments.byStudentAccountId,
     tutorCommentsByStudentName: tutorComments.byStudentName,
@@ -262,7 +263,7 @@ function getAvSessionRows(payload) {
       ? row.studentFullName === selectedStudent
       : row.subjectFullName === selectedSubject)
     .sort((a, b) => selectedStudent
-      ? compareText_(a.subjectFullName, b.subjectFullName)
+      ? compareSubjectOrderThenName_(a, b)
       : compareText_(a.studentFullName, b.studentFullName));
 
   return {
@@ -433,6 +434,7 @@ function createAvSessionStudentReportPdf(payload) {
     return {
       sheetRow: modelRow.sheetRow,
       subjectFullName: modelRow.subjectFullName,
+      subjectOrder: modelRow.subjectOrder,
       pi: row && row.pi === true,
       subjectEvaluation: String(row && row.subjectEvaluation || '').trim(),
       concepts: getConceptColumnsFromHeaders_(headers).reduce((result, concept) => {
@@ -442,7 +444,7 @@ function createAvSessionStudentReportPdf(payload) {
         return result;
       }, {})
     };
-  }).sort((a, b) => compareText_(a.subjectFullName, b.subjectFullName));
+  }).sort(compareSubjectOrderThenName_);
 
   const conceptColumns = getConceptColumnsFromHeaders_(headers).map(concept => ({ header: concept.header }));
   const tutorComment = String(payload && payload.tutorComment || '');
@@ -524,7 +526,7 @@ function sendPendingClosedBulletinEmails(payload) {
 }
 
 function createClosedGroupXlsx(payload) {
-  return withClosedContext_(payload, context => {
+  return withGroupActaContext_(payload, context => {
     return createClosedGroupXlsxFile_(context);
   });
 }
@@ -540,7 +542,7 @@ function buildRowsResponseFromTable_(evaluation, selectedGroup, selectedStudent,
       ? row.studentFullName === selectedStudent
       : row.subjectFullName === selectedSubject)
     .sort((a, b) => selectedStudent
-      ? compareText_(a.subjectFullName, b.subjectFullName)
+      ? compareSubjectOrderThenName_(a, b)
       : compareText_(a.studentFullName, b.studentFullName));
 
   return {
@@ -608,6 +610,30 @@ function withClosedContext_(payload, callback) {
   return callback(context);
 }
 
+function withGroupActaContext_(payload, callback) {
+  assertAllowedUser_();
+
+  const selectedGroup = String(payload && payload.group || '').trim();
+  if (!selectedGroup) throw new Error('Cal seleccionar un grup.');
+
+  const visibilityContext = resolveUserVisibilityContext_();
+  assertAllowedGroup_(selectedGroup, visibilityContext.visibleGroups);
+  const evaluation = getAvailableEvaluationFromPayload_(payload);
+  if (!isEvaluationClosed_(evaluation) && !isEvaluationGradeEditable_(evaluation)) {
+    throw new Error('Aquesta acció només està disponible en mode junta o amb una avaluació tancada.');
+  }
+
+  const gradesSpreadsheet = openLogicalTableSpreadsheet_(GRADES_TABLE_NAME);
+  const closedRows = readTutoriaRowsForGroup_(gradesSpreadsheet, evaluation.sheetName, selectedGroup);
+  const context = {
+    selectedGroup,
+    evaluation,
+    gradesSpreadsheet,
+    closedRows
+  };
+  return callback(context);
+}
+
 function findClosedTutoriaTarget_(context, payload) {
   const studentAccountId = String(payload && payload.studentAccountId || '').trim();
   const studentFullName = String(payload && payload.student || '').trim();
@@ -647,7 +673,7 @@ function buildStudentReportDataFromSheets_(context, tutoriaRow) {
   const rows = table.rows
     .filter(row => rowIncludesGroup_(row, context.selectedGroup))
     .filter(row => rowMatchesStudent_(row, tutoriaRow.studentFullName, tutoriaRow.studentAccountId))
-    .sort((a, b) => compareText_(a.subjectFullName, b.subjectFullName));
+    .sort(compareSubjectOrderThenName_);
 
   if (!rows.length) {
     throw new Error(`No hi ha dades d'avaluació per a ${tutoriaRow.studentFullName}.`);
@@ -959,7 +985,7 @@ function buildReducedGradeColorMap_(config) {
 }
 
 function buildClosedCsvSubjectOrder_(evalRows, students) {
-  const firstSeen = uniqueInOrder_(evalRows.map(row => row.subjectFullName));
+  const firstSeen = uniqueSubjectsByOrder_(evalRows);
   const common = [];
   const nonCommon = [];
   firstSeen.forEach(subject => {
@@ -970,6 +996,47 @@ function buildClosedCsvSubjectOrder_(evalRows, students) {
     (target ? common : nonCommon).push(subject);
   });
   return common.concat(nonCommon);
+}
+
+function uniqueSubjectsByOrder_(rows) {
+  const seen = new Set();
+  const subjects = [];
+
+  (rows || []).slice()
+    .sort(compareSubjectOrderThenName_)
+    .forEach(row => {
+      const subject = String(row.subjectFullName || '').trim();
+      if (!subject || seen.has(subject)) return;
+
+      seen.add(subject);
+      subjects.push(subject);
+    });
+
+  return subjects;
+}
+
+function compareSubjectOrderThenName_(a, b) {
+  return compareOrder_(a && a.subjectOrder, b && b.subjectOrder) ||
+    compareText_(a && a.subjectFullName, b && b.subjectFullName);
+}
+
+function compareOrder_(a, b) {
+  const orderA = sanitizeOrder_(a);
+  const orderB = sanitizeOrder_(b);
+  const hasOrderA = orderA !== '';
+  const hasOrderB = orderB !== '';
+
+  if (hasOrderA && hasOrderB && orderA !== orderB) return orderA - orderB;
+  if (hasOrderA && !hasOrderB) return -1;
+  if (!hasOrderA && hasOrderB) return 1;
+  return 0;
+}
+
+function sanitizeOrder_(value) {
+  if (value === '' || value === null || value === undefined) return '';
+
+  const number = Number(value);
+  return Number.isFinite(number) ? number : '';
 }
 
 function formatPercentage_(students, rowsByStudent, subject, grade, reducedNames) {
@@ -1162,6 +1229,7 @@ function buildEvaluationRow_(headers, row, sheetRow) {
     subjectFullName: indexes.get(normalizeHeader_('subject_full_name')),
     studentFullName: indexes.get(normalizeHeader_('student_full_name')),
     studentAccountId: indexes.get(normalizeHeader_(STUDENT_ACCOUNT_ID_HEADER)),
+    subjectOrder: indexes.get(normalizeHeader_(SUBJECT_ORDER_HEADER)),
     pi: indexes.get(normalizeHeader_('PI')),
     subjectEvaluation: indexes.get(normalizeHeader_(SUBJECT_EVALUATION_HEADER))
   };
@@ -1171,6 +1239,7 @@ function buildEvaluationRow_(headers, row, sheetRow) {
     tutoringGroup: String(row[headerIndexes.tutoringGroup] || '').trim(),
     tutoringGroups: splitCommaValues_(row[headerIndexes.tutoringGroup]),
     subjectFullName: String(row[headerIndexes.subjectFullName] || '').trim(),
+    subjectOrder: headerIndexes.subjectOrder === undefined ? '' : sanitizeOrder_(row[headerIndexes.subjectOrder]),
     studentFullName: String(row[headerIndexes.studentFullName] || '').trim(),
     studentAccountId: headerIndexes.studentAccountId === undefined
       ? ''
@@ -1430,7 +1499,8 @@ function getConceptColumnsFromHeaders_(headers) {
     .filter(column =>
       column.index >= firstConceptIndex &&
       column.header &&
-      normalizeHeader_(column.header) !== normalizeHeader_(STUDENT_ACCOUNT_ID_HEADER)
+      normalizeHeader_(column.header) !== normalizeHeader_(STUDENT_ACCOUNT_ID_HEADER) &&
+      normalizeHeader_(column.header) !== normalizeHeader_(SUBJECT_ORDER_HEADER)
     );
 }
 

@@ -290,8 +290,10 @@ The current local cache `Grades` -> `subjects_cache` provides:
 | `teacher_full_name` | Local teacher display name. |
 | `teacher_email` | Local teacher email from `Dades de professors` -> `Llista.CORREU INSTIT`. |
 | `mat_reduit` | Local subject code from `GPU001`. |
-| `subject_full_name` | Local subject display name. |
+| `subject_full_name` | Local subject display name. It may be a catalog-resolved name or a free-text name entered in the configuration endpoint. |
 | `subject_dinantia_group_av` | Dinantia group ID selected for assessment. Rebuild fallback may be a comma-separated list of display names. |
+| `materia_clau` | Boolean key/tutorial row marker. |
+| `order` | Optional numeric subject order copied to generated `subject_order` metadata. |
 
 The configuration endpoint lists and saves Dinantia group IDs for
 `subject_dinantia_group_av`, using `group.id` from `/v1/groups/index`. Student

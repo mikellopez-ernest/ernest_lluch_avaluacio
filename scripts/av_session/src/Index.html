@@ -437,7 +437,7 @@
       document.getElementById('subject-selector').addEventListener('change', handleSubjectChange);
       document.getElementById('save-button').addEventListener('click', saveChanges);
       document.getElementById('print-button').addEventListener('click', downloadStudentReport);
-      document.getElementById('csv-button').addEventListener('click', downloadClosedXlsx);
+      document.getElementById('csv-button').addEventListener('click', downloadGroupXlsx);
       document.getElementById('bulk-pdf-button').addEventListener('click', generateMissingClosedBulletins);
       document.getElementById('bulk-mail-button').addEventListener('click', sendPendingClosedEmails);
       document.getElementById('prev-button').addEventListener('click', () => navigateSelection(-1));
@@ -585,6 +585,7 @@
 
         studentSelector.disabled = false;
         subjectSelector.disabled = false;
+        updateActionButtons();
       }
 
       function renderClosedMode() {
@@ -637,7 +638,7 @@
             : row.subjectFullName === selectedSubject)
           .slice()
           .sort((a, b) => selectedStudent
-            ? a.subjectFullName.localeCompare(b.subjectFullName, 'ca', { sensitivity: 'base' })
+            ? compareSubjectOrderThenName(a, b)
             : a.studentFullName.localeCompare(b.studentFullName, 'ca', { sensitivity: 'base' }));
 
         state.rowsData = {
@@ -823,6 +824,29 @@
         if (!state.rowsData || state.rowsData.mode !== 'student') return '';
         const firstRow = (state.rowsData.rows || [])[0] || {};
         return firstRow.studentAccountId || '';
+      }
+
+      function compareSubjectOrderThenName(a, b) {
+        return compareOrder(a && a.subjectOrder, b && b.subjectOrder) ||
+          String(a && a.subjectFullName || '').localeCompare(String(b && b.subjectFullName || ''), 'ca', { sensitivity: 'base' });
+      }
+
+      function compareOrder(a, b) {
+        const orderA = parseOrder(a);
+        const orderB = parseOrder(b);
+        const hasOrderA = orderA !== null;
+        const hasOrderB = orderB !== null;
+
+        if (hasOrderA && hasOrderB && orderA !== orderB) return orderA - orderB;
+        if (hasOrderA && !hasOrderB) return -1;
+        if (!hasOrderA && hasOrderB) return 1;
+        return 0;
+      }
+
+      function parseOrder(value) {
+        if (value === '' || value === null || value === undefined) return null;
+        const number = Number(value);
+        return Number.isFinite(number) ? number : null;
       }
 
       function renderHeaderRow(primaryHeader, conceptColumns) {
@@ -1127,8 +1151,8 @@
           });
       }
 
-      function downloadClosedXlsx() {
-        if (!isClosedMode()) return;
+      function downloadGroupXlsx() {
+        if (!isGroupActaMode()) return;
 
         setBusy(true, 'Generant l\'acta del grup...');
         google.script.run
@@ -1320,12 +1344,16 @@
       }
 
       function updateClosedActionButtons() {
+        const csvButton = document.getElementById('csv-button');
+        csvButton.hidden = !isGroupActaMode();
+        csvButton.disabled = !hasGroupActaRows() || document.body.classList.contains('busy');
+
         const showClosedActions = isClosedMode();
-        const hasRows = showClosedActions && state.evaluationData && (state.evaluationData.closedRows || []).length;
-        ['csv-button', 'bulk-pdf-button', 'bulk-mail-button'].forEach(id => {
+        const hasClosedRows = showClosedActions && state.evaluationData && (state.evaluationData.closedRows || []).length;
+        ['bulk-pdf-button', 'bulk-mail-button'].forEach(id => {
           const button = document.getElementById(id);
           button.hidden = !showClosedActions;
-          button.disabled = !hasRows || document.body.classList.contains('busy');
+          button.disabled = !hasClosedRows || document.body.classList.contains('busy');
         });
       }
 
@@ -1346,9 +1374,11 @@
             element.disabled = isBusy || isClosedMode() || (!state.dirtyRows.size && !state.tutorCommentDirty);
           } else if (element.id === 'print-button') {
             element.disabled = isBusy || isClosedMode() || !state.rowsData || state.rowsData.mode !== 'student' || !(state.rowsData.rows || []).length;
-          } else if (['csv-button', 'bulk-pdf-button', 'bulk-mail-button'].includes(element.id)) {
-            const hasRows = isClosedMode() && state.evaluationData && (state.evaluationData.closedRows || []).length;
-            element.disabled = isBusy || !hasRows;
+          } else if (element.id === 'csv-button') {
+            element.disabled = isBusy || !hasGroupActaRows();
+          } else if (['bulk-pdf-button', 'bulk-mail-button'].includes(element.id)) {
+            const hasClosedRows = isClosedMode() && state.evaluationData && (state.evaluationData.closedRows || []).length;
+            element.disabled = isBusy || !hasClosedRows;
           } else {
             element.disabled = isBusy || element.dataset.locked === 'true';
           }
@@ -1398,6 +1428,23 @@
 
       function isClosedMode() {
         return state.evaluationData && state.evaluationData.mode === 'closed';
+      }
+
+      function isJuntaMode() {
+        return state.evaluationData &&
+          state.evaluationData.evaluation &&
+          state.evaluationData.evaluation.status === 'Mode junta';
+      }
+
+      function isGroupActaMode() {
+        return isClosedMode() || isJuntaMode();
+      }
+
+      function hasGroupActaRows() {
+        if (!state.evaluationData) return false;
+        if (isClosedMode()) return !!(state.evaluationData.closedRows || []).length;
+        if (isJuntaMode()) return !!(state.evaluationData.rows || []).length;
+        return false;
       }
     </script>
   </body>

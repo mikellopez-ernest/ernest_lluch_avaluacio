@@ -4,6 +4,7 @@ const EVALUATIONS_SHEET_NAME = 'avaluacions';
 const ACTIVE_EVALUATION_STATUS = 'Avaluació professors';
 const GRUP_TUTORIA_HEADER = 'grup_tutoria';
 const STUDENT_ACCOUNT_ID_HEADER = 'student_account_id';
+const SUBJECT_ORDER_HEADER = 'subject_order';
 const SUBJECT_EVALUATION_HEADER = 'Avaluació de la matèria';
 
 function doGet() {
@@ -64,7 +65,7 @@ function getTeacherEvaluationData(payload) {
   const table = readEvaluationTable_(sheet);
   const teacherRows = table.rows
     .filter(row => normalizeEmail_(row.teacherEmail) === userEmail)
-    .sort((a, b) => compareText_(a.studentFullName, b.studentFullName));
+    .sort(compareTeacherPanelRows_);
 
   if (!teacherRows.length) {
     return {
@@ -225,6 +226,7 @@ function readEvaluationTable_(sheet) {
     teacherEmail: indexes.get(normalizeHeader_('teacher_email')),
     subjectFullName: indexes.get(normalizeHeader_('subject_full_name')),
     studentFullName: indexes.get(normalizeHeader_('student_full_name')),
+    subjectOrder: indexes.get(normalizeHeader_(SUBJECT_ORDER_HEADER)),
     grupTutoria: indexes.get(normalizeHeader_(GRUP_TUTORIA_HEADER)),
     pi: indexes.get(normalizeHeader_('PI')),
     subjectEvaluation: indexes.get(normalizeHeader_(SUBJECT_EVALUATION_HEADER))
@@ -237,6 +239,7 @@ function readEvaluationTable_(sheet) {
       groupNames: splitCommaValues_(row[headerIndexes.groupName]),
       teacherEmail: String(row[headerIndexes.teacherEmail] || '').trim(),
       subjectFullName: String(row[headerIndexes.subjectFullName] || '').trim(),
+      subjectOrder: headerIndexes.subjectOrder === undefined ? '' : sanitizeOrder_(row[headerIndexes.subjectOrder]),
       studentFullName: String(row[headerIndexes.studentFullName] || '').trim(),
       grupTutoria: headerIndexes.grupTutoria === undefined ? '' : String(row[headerIndexes.grupTutoria] || '').trim(),
       pi: row[headerIndexes.pi] === true || String(row[headerIndexes.pi]).trim().toUpperCase() === 'TRUE',
@@ -326,8 +329,34 @@ function getConceptColumnsFromHeaders_(headers) {
     .filter(column =>
       column.index >= firstConceptIndex &&
       column.header &&
-      normalizeHeader_(column.header) !== normalizeHeader_(STUDENT_ACCOUNT_ID_HEADER)
+      normalizeHeader_(column.header) !== normalizeHeader_(STUDENT_ACCOUNT_ID_HEADER) &&
+      normalizeHeader_(column.header) !== normalizeHeader_(SUBJECT_ORDER_HEADER)
     );
+}
+
+function compareTeacherPanelRows_(a, b) {
+  return compareText_(a.studentFullName, b.studentFullName) ||
+    compareOrder_(a.subjectOrder, b.subjectOrder) ||
+    compareText_(a.subjectFullName, b.subjectFullName);
+}
+
+function compareOrder_(a, b) {
+  const orderA = sanitizeOrder_(a);
+  const orderB = sanitizeOrder_(b);
+  const hasOrderA = orderA !== '';
+  const hasOrderB = orderB !== '';
+
+  if (hasOrderA && hasOrderB && orderA !== orderB) return orderA - orderB;
+  if (hasOrderA && !hasOrderB) return -1;
+  if (!hasOrderA && hasOrderB) return 1;
+  return 0;
+}
+
+function sanitizeOrder_(value) {
+  if (value === '' || value === null || value === undefined) return '';
+
+  const number = Number(value);
+  return Number.isFinite(number) ? number : '';
 }
 
 function mergeConceptColumns_(sheetConceptColumns, configConceptColumns) {

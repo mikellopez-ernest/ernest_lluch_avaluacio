@@ -79,7 +79,8 @@
       }
 
       select,
-      input[type="text"] {
+      input[type="text"],
+      input[type="number"] {
         width: 100%;
         min-height: 40px;
         border: 1px solid var(--line);
@@ -91,7 +92,8 @@
       }
 
       select:focus,
-      input[type="text"]:focus {
+      input[type="text"]:focus,
+      input[type="number"]:focus {
         border-color: var(--accent);
         outline: 2px solid rgba(37, 99, 235, 0.18);
       }
@@ -99,7 +101,7 @@
       .editor-header,
       .cache-row {
         display: grid;
-        grid-template-columns: 82px 1fr 1fr 1fr;
+        grid-template-columns: 82px 90px 1fr 1fr 1fr;
         gap: 12px;
       }
 
@@ -135,6 +137,11 @@
         display: flex;
         justify-content: center;
         min-height: 40px;
+      }
+
+      .subject-cell {
+        display: grid;
+        gap: 8px;
       }
 
       input[type="radio"] {
@@ -509,6 +516,7 @@
       <section id="editor" class="editor-panel" hidden>
         <div class="editor-header">
           <span>Tutoria</span>
+          <span>Ordre</span>
           <span>Assignatura</span>
           <span>Professor</span>
           <span>Grup d'alumnes per avaluar</span>
@@ -684,7 +692,15 @@
 
         materiaClauCell.appendChild(materiaClauRadio);
 
-        const subjectSelect = createSelect('subject', state.options.subjects, row.subjectFullName);
+        const orderInput = document.createElement('input');
+        orderInput.type = 'number';
+        orderInput.dataset.role = 'order';
+        orderInput.value = row.order === 0 || row.order ? row.order : '';
+        orderInput.placeholder = 'Ordre';
+        orderInput.step = '1';
+        orderInput.setAttribute('aria-label', 'Ordre');
+
+        const subjectControl = createSubjectControl(row.subjectFullName);
         const teacherSelect = createSelect('teacher', state.options.teachers, row.teacherFullName);
         const dinantiaGroupSelect = createSelect('dinantia-group', state.options.dinantiaGroups, row.subjectDinantiaGroupAv);
         const deleteButton = createDeleteButton('Eliminar fila', () => {
@@ -696,13 +712,19 @@
         });
         deleteButton.classList.add('cache-row-delete');
 
-        [materiaClauRadio, subjectSelect, teacherSelect, dinantiaGroupSelect].forEach(control => {
+        [materiaClauRadio, orderInput, subjectControl.select, subjectControl.input, teacherSelect, dinantiaGroupSelect].forEach(control => {
           control.addEventListener('change', () => {
             item.dataset.dirty = 'true';
           });
+          control.addEventListener('input', () => {
+            item.dataset.dirty = 'true';
+          });
+        });
+        subjectControl.select.addEventListener('change', () => {
+          syncSubjectControl(subjectControl);
         });
 
-        item.append(materiaClauCell, subjectSelect, teacherSelect, dinantiaGroupSelect, deleteButton);
+        item.append(materiaClauCell, orderInput, subjectControl.element, teacherSelect, dinantiaGroupSelect, deleteButton);
 
         return item;
       }
@@ -727,6 +749,41 @@
         return select;
       }
 
+      function createSubjectControl(selectedValue) {
+        const element = document.createElement('div');
+        element.className = 'subject-cell';
+
+        const select = createSelect('subject', state.options.subjects, selectedValue);
+        const customOption = document.createElement('option');
+        customOption.value = '__custom_subject__';
+        customOption.textContent = 'Afegir una nova matèria';
+        select.appendChild(customOption);
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.dataset.role = 'subject-custom';
+        input.placeholder = 'Nom de la matèria';
+        input.value = selectedValue || '';
+
+        if (selectedValue && !state.options.subjects.includes(selectedValue)) {
+          select.value = customOption.value;
+        }
+
+        element.append(select, input);
+        const control = { element, select, input };
+        syncSubjectControl(control);
+        return control;
+      }
+
+      function syncSubjectControl(control) {
+        const isCustom = control.select.value === '__custom_subject__';
+        control.input.hidden = !isCustom;
+        control.input.disabled = !isCustom;
+        if (isCustom && !control.input.value) {
+          control.input.focus();
+        }
+      }
+
       function addEditableRow() {
         const groupName = document.getElementById('group-selector').value;
         if (!groupName) return;
@@ -738,7 +795,8 @@
           subjectFullName: '',
           teacherFullName: '',
           subjectDinantiaGroupAv: '',
-          materiaClau: false
+          materiaClau: false,
+          order: ''
         }));
       }
 
@@ -753,10 +811,11 @@
           id: row.dataset.id,
           group: row.dataset.group,
           groupName: row.dataset.groupName,
-          subjectFullName: row.querySelector('select[data-role="subject"]').value,
+          subjectFullName: getSubjectValueFromRow(row),
           teacherFullName: row.querySelector('select[data-role="teacher"]').value,
           subjectDinantiaGroupAv: row.querySelector('select[data-role="dinantia-group"]').value,
-          materiaClau: row.querySelector('input[data-role="materia-clau"]').checked
+          materiaClau: row.querySelector('input[data-role="materia-clau"]').checked,
+          order: row.querySelector('input[data-role="order"]').value
         }));
 
         if (!rows.length && !deletedRowIds.size) {
@@ -785,6 +844,17 @@
             rows,
             deletedRowIds: Array.from(deletedRowIds)
           });
+      }
+
+      function getSubjectValueFromRow(row) {
+        const select = row.querySelector('select[data-role="subject"]');
+        if (!select) return '';
+        if (select.value === '__custom_subject__') {
+          const input = row.querySelector('input[data-role="subject-custom"]');
+          return input ? input.value.trim() : '';
+        }
+
+        return select.value;
       }
 
       function openRebuildModal() {

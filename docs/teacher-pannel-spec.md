@@ -97,6 +97,7 @@ Generated evaluation sheets contain:
 | `Avaluació de la matèria` | Editable subject evaluation dropdown. |
 | custom concept columns | Editable configured concepts. |
 | `student_account_id` | Hidden Dinantia student account id reserved for sync workflows. |
+| `subject_order` | Hidden numeric subject order copied from `subjects_cache.order`. |
 
 `group_name` can contain a single display group, such as:
 
@@ -153,6 +154,7 @@ For custom concept columns:
 
 - Show all remaining main-sheet headers after `Avaluació de la matèria` exactly as they appear.
 - Exclude `student_account_id`.
+- Exclude `subject_order`.
 - Ignore the config `avaluacio_reduit` and `Color` columns when resolving custom concept options.
 - If the matching config column has values, render a dropdown.
 - If the matching config column has no values, render an open text field.
@@ -190,7 +192,7 @@ After the evaluation is selected or auto-loaded, show:
 | Control | Source |
 | --- | --- |
 | `Grup` | Unique comma-separated values from `group_name` in rows matching the active teacher email. |
-| `Matèria` | Unique `subject_full_name` values for the selected group and active teacher email. |
+| `Matèria` | Unique `subject_full_name` values for the selected group and active teacher email, sorted by `subject_order`, then subject name. |
 
 The table is shown only after both `Grup` and `Matèria` are selected.
 
@@ -202,7 +204,9 @@ The table title is:
 
 When all matching rows use a group array, `common_group_name` is the common part of the group names. For example, `4t ESO A, 4t ESO B` is displayed as `4t ESO`.
 
-Rows are sorted alphabetically by `student_full_name`.
+Rows are sorted alphabetically by `student_full_name`. If a combined view ever
+shows more than one subject for the same student, sort those subjects by
+`subject_order`, then `subject_full_name`.
 
 Table columns:
 

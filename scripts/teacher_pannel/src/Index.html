@@ -387,9 +387,9 @@
           return;
         }
 
-        uniqueSorted(state.evaluationData.rows
+        uniqueSubjectsByOrder(state.evaluationData.rows
           .filter(row => rowIncludesGroup(row, groupName))
-          .map(row => row.subjectFullName))
+        )
           .forEach(subject => selector.appendChild(createOption(subject, subject)));
 
         selector.disabled = false;
@@ -640,6 +640,45 @@
 
       function rowIncludesGroup(row, groupName) {
         return Array.isArray(row.groupNames) && row.groupNames.includes(groupName);
+      }
+
+      function uniqueSubjectsByOrder(rows) {
+        const subjects = [];
+        const seen = new Set();
+
+        (rows || [])
+          .slice()
+          .sort((a, b) =>
+            compareOrder(a.subjectOrder, b.subjectOrder) ||
+            String(a.subjectFullName || '').localeCompare(String(b.subjectFullName || ''), 'ca', { sensitivity: 'base' })
+          )
+          .forEach(row => {
+            const subject = String(row.subjectFullName || '').trim();
+            if (!subject || seen.has(subject)) return;
+
+            seen.add(subject);
+            subjects.push(subject);
+          });
+
+        return subjects;
+      }
+
+      function compareOrder(a, b) {
+        const orderA = parseOrder(a);
+        const orderB = parseOrder(b);
+        const hasOrderA = orderA !== null;
+        const hasOrderB = orderB !== null;
+
+        if (hasOrderA && hasOrderB && orderA !== orderB) return orderA - orderB;
+        if (hasOrderA && !hasOrderB) return -1;
+        if (!hasOrderA && hasOrderB) return 1;
+        return 0;
+      }
+
+      function parseOrder(value) {
+        if (value === '' || value === null || value === undefined) return null;
+        const number = Number(value);
+        return Number.isFinite(number) ? number : null;
       }
 
       function applyEvaluationColor(element, evaluationValue) {

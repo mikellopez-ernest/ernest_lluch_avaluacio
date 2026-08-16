@@ -12,16 +12,21 @@ This file tracks future work and open decisions only. Implemented specifications
   multi-group events as comma-separated values in `subjects_cache.group`.
 - `subjects_cache.materia_clau` marks the key/tutorial subject row. Rebuilds
   check TUTORIA by default, but the configuration endpoint can change it.
+- `subjects_cache.order` controls subject order. Rebuilds set TUTORIA to `0`
+  and leave other rows blank; manual edits can assign numeric order values.
 - The configuration endpoint edits `subjects_cache` directly.
 - The configuration endpoint saves only dirty/new/deleted rows and disables the
   page while saving.
+- The configuration endpoint can save free-text subject names through
+  `Afegir una nova matèria`.
 - The endpoint can create evaluation sheets from `subjects_cache`.
 - Evaluation creation lets users choose which group codes are included.
 - Evaluation config sheets store subject-evaluation full names, reduced names,
   and colors.
 - Dinantia student expansion uses `accounts.groups.member` string memberships.
 - Generated main evaluation sheets include `group`, `teacher_email`,
-  `grup_tutoria`, `PI`, and hidden `student_account_id` columns.
+  `grup_tutoria`, `PI`, and hidden `student_account_id` / `subject_order`
+  columns.
 - Rows where `subjects_cache.materia_clau` is true are generated into
   `{sheet_name}_tutoria`, not into the main evaluation sheet.
 - `grup_tutoria` is generated from the student's tutoria row, not from a

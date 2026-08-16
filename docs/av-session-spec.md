@@ -130,7 +130,7 @@ active selector (`Alumne` or `Matèria`). The left arrow is disabled on the firs
 item and the right arrow is disabled on the last item. Arrow navigation is
 client-side and uses the already-loaded selector values.
 
-In `Avaluació professors` and `Mode junta`, the page has two floating bubble
+In `Avaluació professors` and `Mode junta`, the page has these floating bubble
 buttons in the bottom-right corner:
 
 | Button | Behavior |
@@ -138,12 +138,16 @@ buttons in the bottom-right corner:
 | Save | Saves dirty grade rows and/or the dirty tutor comment. |
 | Print | Generates and downloads a PDF report for the selected student. It is enabled only in student mode. |
 
+In `Mode junta`, the page also shows the spreadsheet-style bubble button so the
+user can generate and download the group XLSX acta while the evaluation session
+is still open. This spreadsheet button is not shown in `Avaluació professors`.
+
 In `Tancada`, the page has three floating bubble buttons in the bottom-right
 corner, ordered from left to right:
 
 | Button | Behavior |
 | --- | --- |
-| Spreadsheet icon | Generates and downloads the group XLSX acta described in `Closed XLSX Acta Export`. |
+| Spreadsheet icon | Generates and downloads the group XLSX acta described in `Group XLSX Acta Export`. |
 | PDF icon | Generates PDF bulletins for all remaining students in the selected group whose `Butlletí_url` is blank. |
 | Mail icon | Sends bulletin emails for all students in the selected group that do not have a send marker in either `enviat_email_1` or `enviat_email_2`. |
 
@@ -168,7 +172,8 @@ derived from the already-filtered evaluation sheet rows:
 1. Read the generated evaluation sheet once.
 2. Filter rows by `grup_tutoria`.
 3. Build unique sorted students from `student_full_name`.
-4. Build unique sorted subjects from `subject_full_name`.
+4. Build unique subjects from `subject_full_name`, sorted by hidden
+   `subject_order`, then `subject_full_name`.
 5. Return the filtered rows to the browser so switching between `Alumne` and
    `Matèria` does not require another Apps Script call.
 
@@ -211,7 +216,10 @@ Subject mode columns:
 | `Avaluació de la matèria` | `Avaluació de la matèria` |
 | remaining concept headers | matching concept columns |
 
-`student_account_id` is hidden and non-writable.
+`student_account_id` and `subject_order` are hidden and non-writable.
+`subject_order` is copied from `subjects_cache.order` when the evaluation is
+created and is used to sort subject selectors, student-mode rows, PDFs, and
+XLSX/CSV acta exports.
 
 `grup_tutoria` is generated metadata and non-writable. It is not shown as a
 normal editable table column.
@@ -247,6 +255,7 @@ The tutoria sheet has one row per student and these columns:
 | `student_full_name` | Student display name. |
 | `grup_tutoria` | Tutoring group used for visibility/filtering. |
 | `student_account_id` | Stable student identifier shared with the evaluation sheet. |
+| `subject_order` | Hidden numeric subject order copied from `subjects_cache.order`. |
 | `Comentari_tutor` | Value edited in the `Comentari del tutor` textarea. |
 | `Butlletí_url` | Report-card URL. |
 | `email_1` | First destination email address for bulletin sending. |
@@ -287,9 +296,10 @@ Closed-mode row actions and closed-mode floating bubble actions must use the
 same backend rules. Row links operate on one student. Floating bubbles operate
 on every applicable remaining student in the selected group.
 
-## Closed Bulk Action Loading State
+## Bulk Action Loading State
 
-The three `Tancada` floating bubble processes can take time:
+The spreadsheet-style XLSX acta generation can take time in `Mode junta` and
+`Tancada`. The other two bulk processes exist only in `Tancada`:
 
 - group XLSX acta generation
 - missing PDF bulletin generation
@@ -311,11 +321,11 @@ name under the generic progress message.
 The user must not be able to change selectors, click table actions, or launch
 another floating action until the running process finishes or fails.
 
-## Closed XLSX Acta Export
+## Group XLSX Acta Export
 
-When the user clicks the spreadsheet-style floating bubble button in `Tancada`,
-the app generates an XLSX file with the grades of all students in the selected
-group.
+When the user clicks the spreadsheet-style floating bubble button in `Mode
+junta` or `Tancada`, the app generates an XLSX file with the grades of all
+students in the selected group.
 
 The XLSX uses data from:
 
@@ -350,8 +360,8 @@ Subject ordering rules:
 2. Determine which subjects are common to every student in the selected group.
 3. Put common subjects first.
 4. Put non-common subjects after the common subjects.
-5. Preserve a stable human order based on first-seen order in the evaluation
-   sheet within each group of common/non-common subjects.
+5. Within each common/non-common band, sort by hidden `subject_order`, then
+   `subject_full_name`. Empty `subject_order` values appear last.
 
 Each student row contains:
 
@@ -386,7 +396,7 @@ All generated XLSX text must be in Catalan.
 
 The backend must validate before generating the XLSX:
 
-- the selected evaluation is still in `Tancada`
+- the selected evaluation is still in `Mode junta` or `Tancada`
 - the selected group is still visible to the active user
 - the exported rows all belong to the selected `grup_tutoria`
 
@@ -620,7 +630,8 @@ Cunit
 ```
 
 4. Student data: full name, group, and evaluation name.
-5. A subject list, not a table. Each subject is shown as a heading. If `PI` is
+5. A subject list, not a table. Subjects are sorted by hidden `subject_order`,
+   then `subject_full_name`. Each subject is shown as a heading. If `PI` is
    true, the subject heading adds `(PI)`. Under each subject, `Avaluació de la
    matèria` and the non-empty evaluation items are shown as indented lines.
 6. `Comentari del tutor`.
@@ -653,7 +664,7 @@ selected student and group.
 | `generateMissingClosedBulletins` | Generates and stores closed-evaluation bulletin PDFs for all selected-group students still missing `Butlletí_url`. |
 | `sendClosedBulletinEmail` | Sends one closed-evaluation bulletin email to the student's first available contacts. |
 | `sendPendingClosedBulletinEmails` | Sends closed-evaluation bulletin emails for selected-group students that have a PDF URL and no send marker. |
-| `createClosedGroupXlsx` | Generates a downloadable XLSX acta for the selected closed evaluation and group. |
+| `createClosedGroupXlsx` | Generates a downloadable XLSX acta for the selected group in `Mode junta` or `Tancada`. |
 | `createClosedGroupCsv` | Backwards-compatible wrapper that now returns the same XLSX payload as `createClosedGroupXlsx`. |
 
 All implementation helpers should use a trailing underscore.
