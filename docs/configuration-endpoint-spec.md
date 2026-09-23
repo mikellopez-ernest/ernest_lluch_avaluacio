@@ -67,6 +67,13 @@ Permission resolution must match the evaluation-session app:
    treated as visible groups.
 8. All other values are visible Dinantia groups for the current user.
 
+Admin privileges can also be granted through the `admin_privileges` script
+property. This property contains comma-separated email addresses and is compared
+case-insensitively against the active user email. Any admin source grants access
+to all local group codes in the configuration selector and enables admin-only
+actions. Emails listed in `admin_privileges` do not need a matching row in
+`Dades de professors` -> `Llista`.
+
 The configuration group selector is still built from local timetable group
 codes in `subjects_cache.group` (`1A`, `2B`, etc.). To apply Dinantia
 permissions, the server maps visible Dinantia groups to cache group codes by
@@ -90,7 +97,7 @@ grant access to `2B`.
 Server-side enforcement is mandatory:
 
 1. `getConfigurationData` only returns visible group codes and rows for those
-   group codes.
+   group codes, except admins, who receive all cache group codes.
 2. `saveSubjectsCacheEdits` rejects saves for non-visible group codes.
 3. `buildSubjectsCache`, `createEvaluation`, and
    `getEvaluationCreationStatus` require `ADMIN_PRIVILEGES`.

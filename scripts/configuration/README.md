@@ -38,8 +38,11 @@ session app:
 
 Those Dinantia groups are mapped back to local cache group codes through
 `subjects_cache.group_name`. The refresh and `Crear avaluació` bubbles are only
-shown to users with `ADMIN_PRIVILEGES`, and the same rule is enforced server
-side.
+shown to users with `ADMIN_PRIVILEGES` or with their email listed in the
+comma-separated `admin_privileges` script property, and the same rule is
+enforced server side. Any admin source can see all cache group codes in the
+configuration selector. Emails listed in `admin_privileges` do not need a
+matching teacher row.
 
 When a group is selected, the page shows editable dropdown rows for:
 

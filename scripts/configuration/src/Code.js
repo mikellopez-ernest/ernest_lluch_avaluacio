@@ -14,6 +14,7 @@ const SUBJECTS_SHEET_NAME = 'assignatures';
 const RESPONSIBILITIES_SHEET_NAME = 'carrecs';
 const DINANTIA_API_BASE_URL = 'https://app.dinantia.com/api/web';
 const ADMIN_PRIVILEGES_MARKER = 'ADMIN_PRIVILEGES';
+const ADMIN_PRIVILEGES_PROPERTY = 'admin_privileges';
 const TIMEZONE = 'Europe/Madrid';
 
 function grantPermissionsManually() {
@@ -1578,18 +1579,32 @@ function uniqueInOrder_(values) {
 
 function resolveUserVisibilityContext_() {
   const userEmail = normalizeEmail_(getActiveUserEmail_());
+  const propertyAdmin = isAdminEmailFromScriptProperty_(userEmail);
   const teachersSpreadsheet = openLogicalTableSpreadsheet_(TEACHERS_TABLE_NAME);
   const teachersSheet = getRequiredSheet_(teachersSpreadsheet, TEACHERS_SHEET_NAME);
   const teachers = readRowsByHeader_(teachersSheet);
   const actingTeacher = findTeacherByInstitutionalEmail_(teachers, userEmail);
-  if (!actingTeacher) throw new Error('No s\'ha trobat cap tutoria associada al teu correu.');
+  if (!actingTeacher) {
+    if (propertyAdmin) {
+      return {
+        actingTeacher: null,
+        effectiveTeacher: null,
+        isSubstituteActing: false,
+        responsibilities: [],
+        isAdmin: true,
+        visibleGroups: []
+      };
+    }
+
+    throw new Error('No s\'ha trobat cap tutoria associada al teu correu.');
+  }
 
   const substitution = resolveEffectiveTeacher_(teachersSpreadsheet, teachers, actingTeacher);
   const effectiveTeacher = substitution.effectiveTeacher;
   const responsibilities = readTeacherResponsibilities_(effectiveTeacher.fullName);
   const privileges = readDinantiaPrivilegesForResponsibilities_(responsibilities);
   const visibleGroups = buildVisibleGroups_(privileges.groupNames);
-  if (!visibleGroups.length && !privileges.isAdmin) {
+  if (!visibleGroups.length && !privileges.isAdmin && !propertyAdmin) {
     throw new Error('No s\'ha trobat cap tutoria associada al teu correu.');
   }
 
@@ -1598,7 +1613,7 @@ function resolveUserVisibilityContext_() {
     effectiveTeacher,
     isSubstituteActing: substitution.isSubstituteActing,
     responsibilities,
-    isAdmin: privileges.isAdmin,
+    isAdmin: privileges.isAdmin || propertyAdmin,
     visibleGroups
   };
 }
@@ -1688,11 +1703,29 @@ function readDinantiaPrivilegesForResponsibilities_(responsibilities) {
   return { isAdmin, groupNames: uniqueInOrder_(groupNames) };
 }
 
+function isAdminEmailFromScriptProperty_(email) {
+  const targetEmail = normalizeEmail_(email);
+  if (!targetEmail) return false;
+
+  const adminEmails = splitCommaValues_(PropertiesService.getScriptProperties()
+    .getProperty(ADMIN_PRIVILEGES_PROPERTY))
+    .map(normalizeEmail_)
+    .filter(Boolean);
+
+  return adminEmails.includes(targetEmail);
+}
+
 function buildVisibleGroups_(groupNames) {
   return groupNames.map(groupName => ({ dinantiaGroupName: groupName }));
 }
 
 function buildAllowedCacheGroupCodeSet_(cacheRows, visibilityContext) {
+  if (visibilityContext && visibilityContext.isAdmin === true) {
+    return new Set(uniqueInOrder_(cacheRows.reduce((groups, row) => (
+      groups.concat(splitGroupCodes_(row.group))
+    ), [])));
+  }
+
   const visibleGroupNames = new Set((visibilityContext.visibleGroups || [])
     .map(group => normalizeGroupMatch_(group.dinantiaGroupName))
     .filter(Boolean));
