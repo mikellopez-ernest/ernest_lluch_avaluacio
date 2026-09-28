@@ -210,23 +210,33 @@ The `Crear avaluació` modal contains:
 | --- | --- |
 | `H1` | `Crear una avaluació` |
 | Evaluation name | Label `Nom de l'avaluació`, placeholder `p.e. 1a avaluació`. |
+| Configuration import | Label `Importa la configuració`, a CSV file button, and a `Descarrega un exemple` link beside it. |
 | Group list | `Grups a avaluar`; one checkbox per individual `subjects_cache.group` code, checked by default, using first-appearance order from `subjects_cache`. |
 | Subject values | `Avaluació de les matèries`; dynamic list with full text, reduced-name text, color picker, and delete controls. |
 | Extra concepts | `Altres conceptes a avaluar`; dynamic concepts, each with dynamic option rows. |
 
 Concept rules:
 
-1. A subject value is a dropdown option for `Avaluació de la matèria`.
-2. Each subject value has a `Reduït` textbox to its right.
-3. Each subject value has a circular color control to the right of `Reduït`.
-4. The color control defaults to white, `#FFFFFF`.
-5. Clicking the circle opens the browser color picker.
-6. The reduced name is stored in config column C, `avaluacio_reduit`, on the same row as the subject value.
-7. The selected color is stored in config column D, `Color`, on the same row as the subject value.
-8. An extra concept with options becomes a dropdown column.
-9. An extra concept without options becomes an open-text column.
-10. There is no `+` button next to the evaluation name.
-11. Subject values, concepts, and concept options have red delete controls.
+1. A CSV import replaces the current subject values and extra concepts in the popup. It does not change the evaluation name or selected groups.
+2. The CSV must be UTF-8 and comma-delimited. Quoted fields, embedded commas, escaped double quotes, and CRLF or LF line endings are supported.
+3. CSV columns A-D must be, in order, `data de creació`, `Avaluació de les matèries`, `avaluacio_reduit`, and `Color`.
+4. Column A is ignored because the new config sheet receives its own creation datetime.
+5. Nonblank values in columns B-D populate subject value, reduced name, and color. Missing or invalid colors default to `#FFFFFF`.
+6. Each named column from E onward becomes an extra concept. Its nonblank cells become options; a column with no options becomes open text.
+7. Empty concept headers are ignored. Imported row and option order is preserved.
+8. The example download reproduces the supported CSV layout and values supplied for `avaluacio_inicial_config`.
+9. A subject value is a dropdown option for `Avaluació de la matèria`.
+10. Each subject value has a `Reduït` textbox to its right.
+11. Each subject value has a circular color control to the right of `Reduït`.
+12. The color control defaults to white, `#FFFFFF`.
+13. Clicking the circle opens the browser color picker.
+14. The reduced name is stored in config column C, `avaluacio_reduit`, on the same row as the subject value.
+15. The selected color is stored in config column D, `Color`, on the same row as the subject value.
+16. An extra concept with options becomes a dropdown column.
+17. An extra concept without options becomes an open-text column.
+18. There is no `+` button next to the evaluation name.
+19. Subject values, concepts, and concept options have red delete controls.
+20. The visible order of subject values in the popup is authoritative. The server must preserve it when writing config column B and when creating the `Avaluació de la matèria` validation dropdown; it must not sort those values alphabetically.
 
 Generated config sheets use this layout:
 

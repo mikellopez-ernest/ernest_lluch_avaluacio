@@ -75,7 +75,15 @@ choose the group codes to evaluate, then creates:
 - a row in `Grades` -> `avaluacions`
 - main and tutoria rows by expanding `subjects_cache` through Dinantia students
 
-The create-evaluation modal lets users choose which groups to include.
+The create-evaluation modal lets users choose which groups to include. Directly
+below the evaluation name, users can import a UTF-8 comma-delimited config CSV
+or download the built-in example. Importing replaces the modal's subject values
+and extra concepts while preserving the evaluation name and selected groups.
+The first four CSV columns must be `data de creació`, `Avaluació de les
+matèries`, `avaluacio_reduit`, and `Color`; named columns from E onward become
+extra concepts. The creation-date column is ignored, and a concept column with
+no values becomes open text. Subject-evaluation values keep their popup/CSV
+order in both the generated config sheet and the evaluation dropdown.
 
 Evaluation expansion reads Dinantia accounts once, filters `Student` accounts, and indexes them by `account.groups.member`. Those membership values are string group IDs such as `1r ESO A`.
 

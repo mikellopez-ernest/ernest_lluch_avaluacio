@@ -1046,7 +1046,7 @@ function sanitizeSubjectEvaluationItems_(values) {
     });
   });
 
-  return sanitized.sort((a, b) => a.value.localeCompare(b.value, 'ca'));
+  return sanitized;
 }
 
 function sanitizeHexColor_(value) {

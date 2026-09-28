@@ -281,7 +281,7 @@ function readEvaluationConfig_(gradesSpreadsheet, evaluationSheetName) {
   const firstConceptIndex = hasReducedColumn
     ? (colorIndex === 3 ? 4 : 3)
     : (colorIndex === 2 ? 3 : 2);
-  const subjectEvaluationOptions = uniqueSorted_(values.slice(1)
+  const subjectEvaluationOptions = uniqueInOrder_(values.slice(1)
     .map(row => String(row[1] || '').trim())
     .filter(Boolean));
   const subjectEvaluationReducedNames = values.slice(1)
@@ -479,6 +479,10 @@ function getField_(row, ...headers) {
 function uniqueSorted_(values) {
   return Array.from(new Set(values.map(value => String(value || '').trim()).filter(Boolean)))
     .sort(compareText_);
+}
+
+function uniqueInOrder_(values) {
+  return Array.from(new Set(values.map(value => String(value || '').trim()).filter(Boolean)));
 }
 
 function splitCommaValues_(value) {

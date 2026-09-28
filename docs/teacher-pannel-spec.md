@@ -138,6 +138,11 @@ The endpoint reads `{sheet_name}_config` for dropdown values.
 | D | Optional `Color` column with hex colors for the subject-evaluation values in column B. |
 | E onward | Concept names and optional dropdown values. |
 
+The `Avaluació de la matèria` dropdown must preserve the top-to-bottom order
+of the non-empty values in config column B. Duplicate values are shown once,
+at the position of their first occurrence. The panel must not sort these values
+alphabetically.
+
 New config sheets have `avaluacio_reduit` as the header in column C and `Color`
 as the header in column D. Old config sheets may not. The backend must inspect
 the config headers:

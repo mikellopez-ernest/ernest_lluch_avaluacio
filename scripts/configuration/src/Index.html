@@ -345,6 +345,74 @@
         letter-spacing: 0;
       }
 
+      .config-import {
+        display: grid;
+        gap: 8px;
+        margin-top: 16px;
+      }
+
+      .config-import-title {
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .config-import-actions {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .config-import-feedback {
+        min-height: 18px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.4;
+      }
+
+      .config-import-feedback.error {
+        color: var(--danger);
+      }
+
+      .config-import-feedback.success {
+        color: var(--success);
+      }
+
+      .file-button,
+      .download-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 40px;
+        border-radius: 6px;
+        padding: 0 14px;
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .file-button {
+        border: 0;
+        background: var(--accent);
+        color: #fff;
+      }
+
+      .file-button:hover {
+        background: var(--accent-dark);
+      }
+
+      .download-link {
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--accent-dark);
+        text-decoration: none;
+      }
+
+      .download-link:hover {
+        border-color: var(--accent);
+      }
+
       .subtitle {
         margin: 0;
         color: var(--muted);
@@ -567,6 +635,16 @@
           <input id="evaluation-name" type="text" placeholder="p.e. 1a avaluació">
         </label>
 
+        <div class="config-import">
+          <span class="config-import-title">Importa la configuració</span>
+          <div class="config-import-actions">
+            <label class="file-button" for="evaluation-config-file">Importa un CSV</label>
+            <input id="evaluation-config-file" type="file" accept=".csv,text/csv" hidden>
+            <a id="download-config-example" class="download-link" href="#" download="avaluacio_config_exemple.csv">Descarrega un exemple</a>
+          </div>
+          <div id="config-import-feedback" class="config-import-feedback" aria-live="polite"></div>
+        </div>
+
         <section class="form-section">
           <h2>Grups a avaluar</h2>
           <div id="evaluation-groups" class="group-checks"></div>
@@ -606,6 +684,13 @@
       };
       let evaluationProgressTimer = null;
       let deletedRowIds = new Set();
+      const EVALUATION_CONFIG_EXAMPLE_CSV = `data de creació,Avaluació de les matèries,avaluacio_reduit,Color,Què he aprés,En què puc millorar,Autonomia,Interès,Treball
+20260845:12:00,Assoliment excel·lent,AE,#00FF00,,,0. Les absències dificulten avaluar la seva autonomia,0. Les absències dificulten avaluar el grau d'interès per la matèria,0. Les absències dificulten avaluar el seu grau de treball.
+,Assoliment notable,AN,#FFFFFF,,,1. El seu nivell d'autonomia és molt baix. Encara no es mostra capaç de dur a terme un seguiment de la matèria autònom i responsable.,"1. No ha mostrat cap interès per aprendre, ni iniciativa o curiositat",1. No acostuma a fer les tasques encomanades ni mostra una bona predisposició per al treball plantejat.
+,Assoliment satisfactori,AS,#FFFFFF,,,"2. En general, mostra un nivell d'autonomia baix. Necessita sovint indicacions clares i un suport constant per al desenvolupament correcte de la matèria.",2. No mostra gaire interès per aprendre ni expressa curiositat o iniciativa,"2. La seva predisposició per al treball i el seguiment de la materia és millorable, així com la qualitat de les tasques presentades."
+,No assolit,NA,#FF6822,,,"3. Tot i que mostra certa autonomia, acostuma a necessitar indicacions clares i cert suport per al desenvolupament correcte de la matèria.","3. Mostra un interès per aprendre neutre, sense gaire iniciativa ni curiositat","3. Mostra una predisposició correcta per al treball i el seguiment de la matèria, tot i que no sempre realitza satisfactòriament les tasques encomanades."
+,,,,,,"4. Mostra un notable nivell d'autonomia en el seguiment de la matèria. En general, la seva organització, planificació i seguiment de la matèria són correctes.","4. Mostra un cert interès per aprendre, però no sempre amb iniciativa o curiositat",4. Mostra una bona predisposició per al treball i el seguiment de la matèria i acostuma a fer les tasques encomanades amb resultats correctes.
+,,,,,,"5. Treballa de manera plenament autònoma. La seva organització, planificació  i seguiment de la matèria és excel·lent.","5. Mostra interès per aprendre, té curiositat i iniciativa",5. Mostra una predisposició plena per al treball i el seguiment de la matèria. Realitza les tasques encomanades amb atenció i cura.`.replace(/\n/g, '\r\n');
 
       document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('group-selector').addEventListener('change', renderSelectedGroup);
@@ -619,6 +704,8 @@
         document.getElementById('confirm-evaluation').addEventListener('click', createEvaluation);
         document.getElementById('add-subject-value').addEventListener('click', () => addSubjectValueInput(''));
         document.getElementById('add-concept').addEventListener('click', () => addConceptInput('', ['']));
+        document.getElementById('evaluation-config-file').addEventListener('change', importEvaluationConfigCsv);
+        document.getElementById('download-config-example').addEventListener('click', downloadEvaluationConfigExample);
         loadData();
       });
 
@@ -896,6 +983,8 @@
 
       function openEvaluationModal() {
         document.getElementById('evaluation-name').value = '';
+        document.getElementById('evaluation-config-file').value = '';
+        setConfigImportFeedback('');
         document.getElementById('subject-values').innerHTML = '';
         document.getElementById('concepts').innerHTML = '';
         renderEvaluationGroups();
@@ -909,6 +998,168 @@
 
         addConceptInput('', ['']);
         document.getElementById('evaluation-modal').classList.add('open');
+      }
+
+      function importEvaluationConfigCsv(event) {
+        const input = event.currentTarget;
+        const file = input.files && input.files[0];
+        if (!file) return;
+
+        if (!file.name.toLowerCase().endsWith('.csv')) {
+          setConfigImportFeedback('Selecciona un fitxer CSV.', 'error');
+          input.value = '';
+          return;
+        }
+
+        setConfigImportFeedback('Important la configuració...');
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const config = parseEvaluationConfigCsv(String(reader.result || ''));
+            renderImportedEvaluationConfig(config);
+            setConfigImportFeedback(
+              `Configuració importada: ${config.subjectItems.length} valors i ${config.concepts.length} conceptes.`,
+              'success'
+            );
+          } catch (error) {
+            setConfigImportFeedback(error.message || 'No s\'ha pogut importar el CSV.', 'error');
+          } finally {
+            input.value = '';
+          }
+        };
+        reader.onerror = () => {
+          setConfigImportFeedback('No s\'ha pogut llegir el fitxer CSV.', 'error');
+          input.value = '';
+        };
+        reader.readAsText(file, 'UTF-8');
+      }
+
+      function parseEvaluationConfigCsv(csvText) {
+        const rows = parseCsvRows(csvText);
+        if (!rows.length) throw new Error('El fitxer CSV està buit.');
+
+        const headers = rows[0].map((header, index) => {
+          const value = String(header || '').trim();
+          return index === 0 ? value.replace(/^\uFEFF/, '') : value;
+        });
+        const requiredHeaders = [
+          'data de creació',
+          'Avaluació de les matèries',
+          'avaluacio_reduit',
+          'Color'
+        ];
+
+        requiredHeaders.forEach((header, index) => {
+          if (headers[index] !== header) {
+            throw new Error(`La columna ${index + 1} ha de ser "${header}".`);
+          }
+        });
+
+        const dataRows = rows.slice(1);
+        const subjectItems = dataRows
+          .map(row => ({
+            value: String(row[1] || '').trim(),
+            reduit: String(row[2] || '').trim(),
+            color: normalizeImportedColor(row[3])
+          }))
+          .filter(item => item.value);
+
+        if (!subjectItems.length) {
+          throw new Error('El CSV no conté cap valor a "Avaluació de les matèries".');
+        }
+
+        const concepts = headers.slice(4)
+          .map((name, offset) => ({
+            name: String(name || '').trim(),
+            options: dataRows
+              .map(row => String(row[offset + 4] || '').trim())
+              .filter(Boolean)
+          }))
+          .filter(concept => concept.name);
+
+        return { subjectItems, concepts };
+      }
+
+      function parseCsvRows(csvText) {
+        const rows = [];
+        let row = [];
+        let field = '';
+        let quoted = false;
+
+        for (let index = 0; index < csvText.length; index += 1) {
+          const character = csvText[index];
+
+          if (quoted) {
+            if (character === '"' && csvText[index + 1] === '"') {
+              field += '"';
+              index += 1;
+            } else if (character === '"') {
+              quoted = false;
+            } else {
+              field += character;
+            }
+            continue;
+          }
+
+          if (character === '"') {
+            quoted = true;
+          } else if (character === ',') {
+            row.push(field);
+            field = '';
+          } else if (character === '\n' || character === '\r') {
+            if (character === '\r' && csvText[index + 1] === '\n') index += 1;
+            row.push(field);
+            rows.push(row);
+            row = [];
+            field = '';
+          } else {
+            field += character;
+          }
+        }
+
+        if (quoted) throw new Error('El CSV conté un camp entre cometes sense tancar.');
+        if (field || row.length) {
+          row.push(field);
+          rows.push(row);
+        }
+
+        return rows.filter(values => values.some(value => String(value || '').trim()));
+      }
+
+      function normalizeImportedColor(value) {
+        const color = String(value || '').trim().toUpperCase();
+        return /^#[0-9A-F]{6}$/.test(color) ? color : '#FFFFFF';
+      }
+
+      function renderImportedEvaluationConfig(config) {
+        const subjectContainer = document.getElementById('subject-values');
+        const conceptContainer = document.getElementById('concepts');
+        subjectContainer.innerHTML = '';
+        conceptContainer.innerHTML = '';
+
+        config.subjectItems.forEach(item => addSubjectValueInput(item.value, item.reduit, item.color));
+        config.concepts.forEach(concept => {
+          addConceptInput(concept.name, concept.options.length ? concept.options : ['']);
+        });
+      }
+
+      function downloadEvaluationConfigExample(event) {
+        event.preventDefault();
+        const blob = new Blob([EVALUATION_CONFIG_EXAMPLE_CSV], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'avaluacio_config_exemple.csv';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      function setConfigImportFeedback(message, type) {
+        const feedback = document.getElementById('config-import-feedback');
+        feedback.textContent = message || '';
+        feedback.className = `config-import-feedback${type ? ` ${type}` : ''}`;
       }
 
       function renderEvaluationGroups() {
@@ -936,7 +1187,7 @@
         document.getElementById('evaluation-modal').classList.remove('open');
       }
 
-      function addSubjectValueInput(value) {
+      function addSubjectValueInput(value, reduit, color) {
         const container = document.getElementById('subject-values');
         const row = document.createElement('div');
         row.className = 'dynamic-row subject-value-row';
@@ -949,13 +1200,14 @@
 
         const reducedInput = document.createElement('input');
         reducedInput.type = 'text';
+        reducedInput.value = reduit || '';
         reducedInput.placeholder = 'Reduït';
         reducedInput.dataset.role = 'subject-reduit';
         reducedInput.setAttribute('aria-label', 'Reduït');
 
         const colorInput = document.createElement('input');
         colorInput.type = 'color';
-        colorInput.value = '#ffffff';
+        colorInput.value = normalizeImportedColor(color).toLowerCase();
         colorInput.className = 'color-picker';
         colorInput.dataset.role = 'subject-color';
         colorInput.setAttribute('aria-label', `Color per a ${value || 'valor de matèria'}`);
