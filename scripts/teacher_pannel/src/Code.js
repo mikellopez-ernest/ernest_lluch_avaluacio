@@ -6,6 +6,7 @@ const GRUP_TUTORIA_HEADER = 'grup_tutoria';
 const STUDENT_ACCOUNT_ID_HEADER = 'student_account_id';
 const SUBJECT_ORDER_HEADER = 'subject_order';
 const SUBJECT_EVALUATION_HEADER = 'Avaluació de la matèria';
+const ADMIN_PRIVILEGES_PROPERTY = 'admin_privileges';
 
 function doGet() {
   if (!isAllowedUser_()) {
@@ -42,6 +43,7 @@ function grantPermissionsManually() {
 function getTeacherPanelData() {
   assertAllowedUser_();
 
+  const isAdmin = isAdminEmailFromScriptProperty_(getActiveUserEmail_());
   const evaluations = readActiveEvaluationRegisters_();
   if (!evaluations.length) {
     throw new Error(`No hi ha cap avaluació en estat "${ACTIVE_EVALUATION_STATUS}".`);
@@ -50,6 +52,7 @@ function getTeacherPanelData() {
   return {
     title: 'Avaluació',
     userEmail: getActiveUserEmail_(),
+    isAdmin,
     evaluations
   };
 }
@@ -62,15 +65,17 @@ function getTeacherEvaluationData(payload) {
   const sheet = getRequiredSheet_(gradesSpreadsheet, evaluation.sheetName);
   const config = readEvaluationConfig_(gradesSpreadsheet, evaluation.sheetName);
   const userEmail = normalizeEmail_(getActiveUserEmail_());
+  const isAdmin = isAdminEmailFromScriptProperty_(userEmail);
   const table = readEvaluationTable_(sheet);
   const teacherRows = table.rows
-    .filter(row => normalizeEmail_(row.teacherEmail) === userEmail)
+    .filter(row => isAdmin || normalizeEmail_(row.teacherEmail) === userEmail)
     .sort(compareTeacherPanelRows_);
 
   if (!teacherRows.length) {
     return {
       evaluation,
       userEmail: getActiveUserEmail_(),
+      isAdmin,
       groups: [],
       rows: [],
       subjectEvaluationOptions: config.subjectEvaluationOptions,
@@ -84,6 +89,7 @@ function getTeacherEvaluationData(payload) {
   return {
     evaluation,
     userEmail: getActiveUserEmail_(),
+    isAdmin,
     groups: uniqueSorted_(teacherRows.reduce((groups, row) =>
       groups.concat(row.groupNames || []), [])),
     rows: teacherRows,
@@ -118,6 +124,7 @@ function saveTeacherEvaluationRows(payload) {
     const table = readEvaluationTable_(sheet);
     const headers = table.headers;
     const userEmail = normalizeEmail_(getActiveUserEmail_());
+    const isAdmin = isAdminEmailFromScriptProperty_(userEmail);
     const columnIndexes = getWritableColumnIndexes_(headers);
 
     rows.forEach(row => {
@@ -128,7 +135,7 @@ function saveTeacherEvaluationRows(payload) {
 
       const values = table.values[sheetRow - 1];
       const currentTeacherEmail = normalizeEmail_(values[table.headerIndexes.teacherEmail]);
-      if (currentTeacherEmail !== userEmail) {
+      if (!isAdmin && currentTeacherEmail !== userEmail) {
         throw new Error('No tens permís per modificar una o més files.');
       }
 
@@ -506,6 +513,17 @@ function normalizeHeader_(value) {
 
 function normalizeEmail_(value) {
   return String(value || '').trim().toLowerCase();
+}
+
+function isAdminEmailFromScriptProperty_(email) {
+  const targetEmail = normalizeEmail_(email);
+  if (!targetEmail) return false;
+
+  return splitCommaValues_(PropertiesService.getScriptProperties()
+    .getProperty(ADMIN_PRIVILEGES_PROPERTY))
+    .map(normalizeEmail_)
+    .filter(Boolean)
+    .includes(targetEmail);
 }
 
 function getActiveUserEmail_() {

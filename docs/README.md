@@ -13,3 +13,9 @@ scratch notes. Open decisions and unfinished work belong in
 | [Dinantia API Specification](dinantia-api-spec.md) | Dinantia authentication, pagination, groups, accounts, and integration rules. |
 | [Teacher Panel Endpoint Specification](teacher-pannel-spec.md) | Teacher-facing evaluation UI, filtering, dirty saves, and generated-sheet consumption. |
 | [Evaluation Session Endpoint Specification](av-session-spec.md) | Session-mode evaluation UI, group visibility, generated-sheet student loading, dirty saves, XLSX acta exports, PDF bulletins, and bulletin email sending. |
+
+## Operational Guides
+
+| Guide | Purpose |
+| --- | --- |
+| [`admin_privileges` Script Property](admin-privileges.md) | Configure, verify, troubleshoot, and remove fixed configuration administrators. |

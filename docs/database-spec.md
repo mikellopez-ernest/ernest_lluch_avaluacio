@@ -46,7 +46,7 @@ const tablesSheet = registrySpreadsheet.getSheetByName('tables');
 | `Càrrega lectiva` | `assignatures`, `carrecs` |
 | `Horaris` | `GPU001` |
 | `Dinantia` | `dinantia_2_dades_alumnes`, `teachers_2_dinantia` |
-| `Grades` | `subjects_cache`, `avaluacions`, generated evaluation sheets, generated evaluation config sheets, generated tutoria sheets |
+| `Grades` | `subjects_cache`, `avaluacions`, generated evaluation sheets, generated evaluation config sheets, generated tutoria sheets, generated tutorial-group comment sheets |
 
 The old `Grades` -> `subjects` table is obsolete and must not be used for the new configuration workflow.
 
@@ -585,6 +585,12 @@ Generated evaluation sheets are created by the configuration endpoint and later
 edited by the teacher panel. Their layout is part of the database contract
 because multiple scripts depend on it.
 
+Each newly created evaluation produces four sheets in the logical `Grades`
+spreadsheet: `{sheet_name}`, `{sheet_name}_config`,
+`{sheet_name}_tutoria`, and `{sheet_name}_tutoria_grups`. Before creating any
+of them, the configuration endpoint must verify that none of the four names
+already exists. Existing evaluations are not migrated automatically.
+
 ### Evaluation Registry Row
 
 Append one row to `Grades` -> `avaluacions`:
@@ -752,6 +758,51 @@ Student index flow:
 4. Collect string values, especially values in `account.groups.member`.
 5. Add the student to every collected group ID.
 6. Sort students alphabetically by full name inside each group.
+
+### Tutorial-Group Comment Sheet Layout
+
+For every newly created evaluation, the configuration endpoint also creates:
+
+```text
+{sheet_name}_tutoria_grups
+```
+
+This sheet stores one shared comment per tutorial group. It is separate from
+the per-student `{sheet_name}_tutoria.Comentari_tutor` field. Group comments
+must not be copied into every student row.
+
+Exact columns:
+
+| Column | Header | Source / Behavior |
+| --- | --- | --- |
+| A | `grup_tutoria` | Final tutorial group identifier/display value used by the generated evaluation sheets. |
+| B | `Comentari_grup` | One shared comment for the whole tutorial group. Blank at creation time. |
+| C | `updated_at` | Last modification datetime. Blank at creation time. |
+| D | `updated_by` | Email of the user who last modified the group comment. Blank at creation time. |
+
+Generation rules:
+
+1. Finish generating `{sheet_name}_tutoria` rows.
+2. Run the existing `grup_tutoria` assignment for those rows.
+3. Find `grup_tutoria` by header name; do not assume a fixed column position.
+4. Read the final in-memory `grup_tutoria` values from the generated tutoria rows.
+5. Trim whitespace and ignore blank values.
+6. Remove duplicates while preserving first-seen order.
+7. Write exactly one row per remaining tutorial group.
+8. Initialize `Comentari_grup`, `updated_at`, and `updated_by` as blank strings.
+
+`selectedGroups` is not a valid source for this sheet. It contains local
+configuration group codes, while `grup_tutoria` contains the final value used
+by downstream evaluation pages and selectors.
+
+The sheet must be written in bulk and formatted after writing:
+
+1. Freeze row 1.
+2. Bold the header and use the same header colors as the other generated sheets.
+3. Vertically align cells to the middle and wrap text.
+4. Give `Comentari_grup` a wide column suitable for long text.
+5. Use sensible widths for `grup_tutoria`, `updated_at`, and `updated_by`.
+6. Do not add formulas or student-level duplicate rows.
 
 Do not call Dinantia once per `subjects_cache` row. Do not depend on `groups/view/:id` containing member lists.
 

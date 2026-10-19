@@ -53,6 +53,14 @@ this marker is present, the backend returns `isAdmin = true` and the UI displays
 an informational `Admin` badge beside the page title. The marker does not grant
 extra group visibility by itself.
 
+The script also reads the comma-separated `admin_privileges` script property.
+Email matching is trimmed and case-insensitive. A matching in-domain account is
+an administrator even without a row in `Dades de professors` -> `Llista`, and
+can access every real group listed in
+`Dinantia` -> `teachers_2_dinantia.dinantia_group_names`.
+`ADMIN_PRIVILEGES` remains a marker and is excluded from the group selector.
+The backend repeats this authorization check for every protected request.
+
 The endpoint does not read `Dinantia -> dinantia_2_dades_alumnes` and does not
 resolve Dades alumnes sheet names.
 
@@ -136,11 +144,40 @@ buttons in the bottom-right corner:
 | Button | Behavior |
 | --- | --- |
 | Save | Saves dirty grade rows and/or the dirty tutor comment. |
-| Print | Generates and downloads a PDF report for the selected student. It is enabled only in student mode. |
+| Print | Opens the print menu described below. |
 
-In `Mode junta`, the page also shows the spreadsheet-style bubble button so the
-user can generate and download the group XLSX acta while the evaluation session
-is still open. This spreadsheet button is not shown in `Avaluació professors`.
+The Save button keeps the existing full-color 3.5-inch disk icon and continues
+to save only changed data. The Print button uses a full-color printer icon. Its
+menu contains:
+
+| Menu option | Behavior |
+| --- | --- |
+| `Imprimir butlletí` | Generates the selected student's existing PDF bulletin. It is enabled only when student mode and a student are selected. |
+| `Imprimir estadístiques Excel` | Generates the selected group's XLSX acta. |
+| `Imprimir acta de junta 1: estadístiques` | Generates the selected group's statistics acta as PDF. |
+| `Imprimir acta de junta 2: full signatures` | Generates a PDF with the teachers involved in the group, their subjects, and signature space. |
+| `Imprimir acta de junta 3: acords de junta` | Generates a PDF containing the selected group's board agreements. |
+
+The four group-level print options are enabled after an evaluation and visible
+group have been loaded. The same two-button surface and the same print menu are
+shown in both `Avaluació professors` and `Mode junta`.
+
+For administrators, choosing any of the three group PDF actas opens a second
+scope menu:
+
+| Scope | Behavior |
+| --- | --- |
+| `Aquest grup` | Generates the selected group's PDF exactly as before. |
+| `Tots els grups` | Generates one PDF containing the corresponding acta for every group represented in the selected evaluation. Each group starts on a new page. |
+
+The all-groups action is verified again on the server and is rejected unless
+the active user resolves as an administrator. Group names are derived from the
+selected evaluation's `grup_tutoria` values, not trusted from the browser. The
+backend reads the evaluation table, config, tutoria rows, and group comments
+once and reuses them while building every group section. Groups without tutoria
+rows are omitted because there is no student/tutor dataset from which to build
+their acta. The selected-student bulletin stays student-specific, and the Excel
+option stays an XLSX export for the selected group.
 
 In `Tancada`, the page has three floating bubble buttons in the bottom-right
 corner, ordered from left to right:
@@ -189,7 +226,9 @@ without additional Apps Script calls.
 
 When the selected evaluation is in `Avaluació professors`, all grade controls in
 the table are rendered disabled. The user can still navigate the same visible
-students and subjects, and can still edit `Comentari del tutor` in student mode.
+students and subjects and can still edit `Comentari del tutor` in student mode.
+The shared `Acords de junta del grup {group}` field is not loaded or shown in
+this state.
 
 When the selected evaluation is in `Tancada`, the endpoint reads
 `Grades -> {sheet_name}_tutoria` for the selected group. It does not load or
@@ -236,6 +275,16 @@ approximately three text rows tall. The field is student-scoped: it is enabled
 when the table is filtered by one student and disabled when the table is
 filtered by one subject.
 
+Immediately below it, the UI shows another three-row text area titled
+`Acords de junta del grup {group}`, where `{group}` is the selected
+`grup_tutoria` value; for example, `Acords de junta del grup 4t ESO A`. This
+field belongs to the selected evaluation and `grup_tutoria`, not to the
+selected student or subject. It is loaded and shown only in `Mode junta`,
+remains enabled in both student and subject mode, and keeps the same in-memory
+value while the user navigates between students, subjects, or arrow selections
+in the same group. It is not loaded or shown in `Avaluació professors`, and it
+is hidden with the other editors in `Tancada` mode.
+
 Tutor comments are stored in a companion sheet for the selected evaluation:
 
 `{sheet_name}_tutoria`
@@ -268,10 +317,27 @@ columns, the backend creates the missing headers automatically before writing
 PDF URLs, destination email addresses, or send markers.
 
 When loading a group in `Avaluació professors` or `Mode junta`, the endpoint
-also reads `{sheet_name}_tutoria` and returns the tutor comments for that
-visible group. The browser keeps them cached by `student_account_id` and by
+reads `{sheet_name}_tutoria` and returns the tutor comments for that visible
+group. The browser keeps them cached by `student_account_id` and by
 `student_full_name`, so changing between students does not require another
 server call.
+
+Only in `Mode junta`, the same group load also reads the single matching row
+from:
+
+`{sheet_name}_tutoria_grups`
+
+Required headers are `grup_tutoria`, `Comentari_grup`, `updated_at`, and
+`updated_by`. The row is matched by normalized `grup_tutoria`. The browser
+loads `Comentari_grup` once and retains it while navigating locally, so student
+or subject changes do not trigger another read and do not cause repeated group
+comment writes.
+
+Existing evaluations created before this schema may not have
+`{sheet_name}_tutoria_grups`. They must continue to load normally; for those
+evaluations the backend returns no group-comment model and the browser hides
+`Acords de junta del grup {group}`. The evaluation-session endpoint does not
+create or migrate this sheet implicitly.
 
 `DRIVE_FOLDER_TUTOR` is a script property containing the Drive base folder ID
 for tutor bulletin storage. The actual folder ID must not be committed to
@@ -300,10 +366,10 @@ on every applicable remaining student in the selected group.
 
 ## Bulk Action Loading State
 
-The spreadsheet-style XLSX acta generation can take time in `Mode junta` and
-`Tancada`. The other two bulk processes exist only in `Tancada`:
+Group XLSX and PDF acta generation can take time in `Avaluació professors` and
+`Mode junta`. The three closed-evaluation bulk processes exist in `Tancada`:
 
-- group XLSX acta generation
+- group XLSX or PDF acta generation
 - missing PDF bulletin generation
 - missing email sending
 
@@ -325,8 +391,9 @@ another floating action until the running process finishes or fails.
 
 ## Group XLSX Acta Export
 
-When the user clicks the spreadsheet-style floating bubble button in `Mode
-junta` or `Tancada`, the app generates an XLSX file with the grades of all
+When the user selects `Imprimir estadístiques Excel` from the print menu in
+`Avaluació professors` or `Mode junta`, or clicks the spreadsheet-style bubble
+button in `Tancada`, the app generates an XLSX file with the grades of all
 students in the selected group.
 
 The XLSX uses data from:
@@ -398,9 +465,93 @@ All generated XLSX text must be in Catalan.
 
 The backend must validate before generating the XLSX:
 
-- the selected evaluation is still in `Mode junta` or `Tancada`
+- the selected evaluation is still in `Avaluació professors`, `Mode junta`, or
+  `Tancada`
 - the selected group is still visible to the active user
 - the exported rows all belong to the selected `grup_tutoria`
+
+## Evaluation Board PDF Actas
+
+The three group actas are generated from dedicated, human-editable HTML
+templates:
+
+| File | Responsibility |
+| --- | --- |
+| `scripts/av_session/src/ActaStatistics.html` | Statistics acta layout. |
+| `scripts/av_session/src/ActaSignatures.html` | Teacher/signature acta layout. |
+| `scripts/av_session/src/ActaAgreements.html` | Group-agreements acta layout. |
+| `scripts/av_session/src/Code.js` | Authorization, data loading, view-model creation, PDF conversion, and download payloads. |
+
+All three PDFs are in Catalan and share a compact header containing:
+
+- `Institut Ernest Lluch i Martín`
+- today's date in Catalan display format
+- the selected evaluation name
+- the selected group name
+- `Tutor: {teacher_full_name}`, resolved from the group's `Tutoria` subject row
+
+Tutor resolution uses the selected evaluation sheet, filters its rows by
+`grup_tutoria`, and takes `teacher_full_name` from the first row whose
+normalized `subject_full_name` is `Tutoria`. If that row is unavailable, the
+matching `{sheet_name}_tutoria` rows provide the fallback teacher name. The
+tutor is rendered on the title line so the compact header does not grow taller.
+
+### Acta 1: Statistics
+
+`Imprimir acta de junta 1: estadístiques` contains the same academic data as
+the group XLSX acta for students, subject grades, configured grade colors, and
+the `NA`, `AS`, `AN`, and `AE` percentage summaries. Unlike the XLSX, this PDF
+does not include `Recompte NA` or tutor comments.
+
+The acta is designed as one A4 landscape page with readable table typography.
+The PDF uses 3 cm left and right page margins. The report header, statistics
+table, and subject legend all use the full width between those margins and are
+perfectly aligned. The student-name column occupies 40% of the table; every
+other table column shares the remaining 60%, is limited to approximately five
+characters, and is headed by a short subject abbreviation. Summary
+percentages are rounded to whole percentages so they fit those narrow columns.
+The report header has a small top offset. The table body uses 10.25 pt type,
+the largest tested size that keeps the current largest class (`2n ESO A`, 28
+students) and the current widest curriculum (`4t ESO A`, 21 subjects) on one
+page. The same calibrated compact layout is used for every group so page count
+does not depend on a size threshold. The full abbreviation-to-subject
+translation is printed as a compact legend immediately after the statistics
+table on the same centered width.
+
+Known subject families use the configured canonical abbreviations, including
+`CA`, `CS`, `AN`, `EF`, `SO`, `ET`, `RE`, `OR`, `MA`, `MB`, `LL`, `MU`, `FQ`,
+`EC`, `EM`, `VP`, `FI`, `TE`, `BI`, `DI`, `AR`, `FR`, and `TD`. Subjects outside the known
+mapping receive a deterministic abbreviation derived from their significant
+words. Automatically derived abbreviations are made unique inside the report,
+and every abbreviation is always explained in the legend.
+
+### Acta 2: Full Signatures
+
+`Imprimir acta de junta 2: full signatures` derives the teachers involved in
+the selected group from both the group-filtered evaluation rows and the
+matching `{sheet_name}_tutoria` rows. Teachers are deduplicated by normalized
+full name. All subjects assigned to the same teacher are combined in the same
+signature slot and ordered by hidden `subject_order`, then subject name.
+
+The tutor is listed before subject teachers when the available data identifies
+that role. The PDF uses an A4 landscape four-column signature grid with room
+for a handwritten signature and a maximum of 24 teacher slots per page. The
+7.75 pt compact layout and six rows of four slots are calibrated so the current
+boundary group, `4t ESO B`, remains on one page.
+
+### Acta 3: Group Agreements
+
+`Imprimir acta de junta 3: acords de junta` prints `Comentari_grup` from the
+matching `{sheet_name}_tutoria_grups` row. In `Mode junta`, the current value in
+the visible `Acords de junta del grup {group}` textarea is sent to the PDF
+generator, so the downloaded document can include an unsaved edit. In
+`Avaluació professors`, where the editor is hidden, the report uses the stored
+sheet value. If the sheet or value does not exist, the PDF displays a clear
+empty-agreements message rather than failing.
+
+Before generating any group acta, the backend revalidates that the evaluation
+is session-available, the selected group is visible to the active user, and all
+grade/tutoria rows used belong to that group.
 
 ## Closed Bulletin Storage
 
@@ -583,6 +734,7 @@ Writable fields are:
 - `Avaluació de la matèria` only in `Mode junta`
 - concept columns after `Avaluació de la matèria`, excluding `student_account_id`, only in `Mode junta`
 - `Comentari_tutor` in `{sheet_name}_tutoria` when a student is selected
+- `Comentari_grup` in `{sheet_name}_tutoria_grups` only in `Mode junta`, in either student or subject mode
 
 Column indexes are calculated from headers, not fixed letters.
 
@@ -599,6 +751,16 @@ with the evaluation sheet. If no account id is available, it falls back to
 `student_full_name`. Before writing `Comentari_tutor`, the backend validates
 that the located tutoria row still matches the selected student and visible
 `grup_tutoria`.
+
+Group-comment saves use a separate dirty flag. Navigating between students or
+subjects in the same group does not clear that flag or write the sheet. When
+Save is pressed, the backend writes only the matching row's `Comentari_grup`,
+`updated_at`, and `updated_by` cells in one operation. `updated_at` is stored as
+a real spreadsheet datetime and `updated_by` stores the active user's email.
+If the group comment did not change, these cells are not written. After a
+successful save, the browser merges the returned value into its in-memory
+group cache without reloading the evaluation sheet. The backend rejects group
+comment writes unless the selected evaluation is still in `Mode junta`.
 
 ## Student PDF Report
 
@@ -660,13 +822,17 @@ selected student and group.
 | `getAvSessionData` | Loads active-user context, visible groups, and session-available evaluations. |
 | `getAvSessionEvaluationData` | Loads students and subjects for a selected evaluation and group. |
 | `getAvSessionRows` | Loads table rows for the selected student or subject. |
-| `saveAvSessionRows` | Saves dirty editable row values and/or the selected student's tutor comment. |
+| `saveAvSessionRows` | Saves dirty editable row values, the selected student's tutor comment, and/or the selected group's shared comment. |
 | `createAvSessionStudentReportPdf` | Generates a downloadable PDF report for the selected student. |
+| `createGroupStatisticsPdf` | Generates the selected group's statistics acta as a downloadable PDF. |
+| `createGroupSignaturesPdf` | Generates the selected group's teacher/signature acta as a downloadable PDF. |
+| `createGroupAgreementsPdf` | Generates the selected group's board-agreements acta as a downloadable PDF. |
+| `createAllGroupsActaPdf` | Admin-only generator that concatenates one selected acta type for every evaluation group into a single PDF. |
 | `generateClosedBulletin` | Generates and stores one closed-evaluation student bulletin PDF, then writes `Butlletí_url`. |
 | `generateMissingClosedBulletins` | Generates and stores closed-evaluation bulletin PDFs for all selected-group students still missing `Butlletí_url`. |
 | `sendClosedBulletinEmail` | Sends one closed-evaluation bulletin email to the student's first available contacts. |
 | `sendPendingClosedBulletinEmails` | Sends closed-evaluation bulletin emails for selected-group students that have a PDF URL and no send marker. |
-| `createClosedGroupXlsx` | Generates a downloadable XLSX acta for the selected group in `Mode junta` or `Tancada`. |
+| `createClosedGroupXlsx` | Generates a downloadable XLSX acta for the selected group in `Avaluació professors`, `Mode junta`, or `Tancada`. |
 | `createClosedGroupCsv` | Backwards-compatible wrapper that now returns the same XLSX payload as `createClosedGroupXlsx`. |
 
 All implementation helpers should use a trailing underscore.

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <style>
+      @page { size: A4 landscape; margin: 12mm 16mm; }
+      body { margin: 0; color: #202124; font-family: Arial, sans-serif; font-size: 10pt; line-height: 1.5; }
+      .document { page-break-after: always; }
+      .document:last-child { page-break-after: auto; }
+      .acta-header { width: 100%; margin-bottom: 14px; border-collapse: collapse; border-bottom: 2px solid #4a4a4a; }
+      .acta-header th { padding: 0 0 5px; text-align: left; font-size: 14pt; }
+      .acta-header td { padding: 2px 8px 6px 0; font-size: 8.5pt; }
+      .header-title-line { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+      .header-tutor { flex: 0 0 auto; font-size: 0.75em; white-space: nowrap; }
+      .school { text-align: right; font-weight: 700; }
+      h2 { margin: 0 0 8px; font-size: 11pt; }
+      .agreements { min-height: 125mm; padding: 10px 12px; border: 1px solid #aeb4bc; white-space: pre-wrap; text-align: justify; }
+      .empty { color: #5f6368; font-style: italic; }
+    </style>
+  </head>
+  <body>
+    <? reports.forEach(function(report) { ?>
+      <section class="document">
+        <table class="acta-header">
+          <tr><th colspan="4"><div class="header-title-line"><span><?= report.header.title ?></span><? if (report.header.tutorName) { ?><span class="header-tutor">Tutor: <?= report.header.tutorName ?></span><? } ?></div></th></tr>
+          <tr>
+            <td><strong>Data:</strong> <?= report.header.date ?></td>
+            <td><strong>Avaluació:</strong> <?= report.header.evaluationName ?></td>
+            <td><strong>Grup:</strong> <?= report.header.groupName ?></td>
+            <td class="school"><?= report.header.schoolName ?></td>
+          </tr>
+        </table>
+        <h2>Acords de junta del grup <?= report.header.groupName ?></h2>
+        <div class="agreements <?= report.agreements ? '' : 'empty' ?>"><?= report.agreements || 'No hi ha acords de junta registrats.' ?></div>
+      </section>
+    <? }); ?>
+  </body>
+</html>

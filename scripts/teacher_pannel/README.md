@@ -59,6 +59,13 @@ After an evaluation is selected, the endpoint:
 4. Shows only groups and subjects present in those filtered rows. If `group_name` contains comma-separated groups, each group appears as an available selector value.
 5. Shows the editable table only after both `Grup` and `Matèria` are selected.
 
+If the active in-domain email is listed in the comma-separated
+`admin_privileges` script property, the endpoint shows the `Admin` indicator
+and loads all rows in the selected evaluation instead of filtering by
+`teacher_email`. The server repeats the same property check before saving, so
+an administrator may save any displayed row. Email matching is trimmed and
+case-insensitive.
+
 If no row matches the teacher email, the endpoint shows:
 
 ```text

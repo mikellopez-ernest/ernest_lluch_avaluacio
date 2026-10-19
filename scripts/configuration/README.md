@@ -72,8 +72,9 @@ choose the group codes to evaluate, then creates:
 - a blank main evaluation sheet
 - a `{sheet_name}_config` sheet
 - a `{sheet_name}_tutoria` sheet
+- a `{sheet_name}_tutoria_grups` sheet
 - a row in `Grades` -> `avaluacions`
-- main and tutoria rows by expanding `subjects_cache` through Dinantia students
+- main, per-student tutoria, and distinct tutorial-group rows derived from the generated data
 
 The create-evaluation modal lets users choose which groups to include. Directly
 below the evaluation name, users can import a UTF-8 comma-delimited config CSV
@@ -96,6 +97,13 @@ Generated evaluation config sheets include subject-evaluation reduced labels in
 instead of the main sheet. The main sheet fills `grup_tutoria` from the matching
 tutoria row, always includes a `PI` checkbox column defaulting to false, and
 includes hidden `student_account_id` and `subject_order` columns.
+
+After final `grup_tutoria` values are assigned, evaluation creation writes
+`{sheet_name}_tutoria_grups` with the exact headers `grup_tutoria`,
+`Comentari_grup`, `updated_at`, and `updated_by`. It contains one row per
+distinct nonblank tutorial group in first-seen order. The three editable and
+metadata fields start blank. Shared group comments remain separate from each
+student's `Comentari_tutor` value.
 
 `Grades` -> `avaluacions` stores `Estat = Creada` for new evaluations and validates the status cell against the configured workflow states.
 

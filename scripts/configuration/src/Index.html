@@ -1313,7 +1313,7 @@
           .withSuccessHandler(result => {
             stopEvaluationProgressPolling();
             setBusy(false);
-            setStatus(`Avaluació creada: ${result.sheetName} (${result.rowsWritten} files, ${result.tutoriaRowsWritten} tutoria).`, 'success');
+            setStatus(`Avaluació creada: ${result.sheetName} (${result.rowsWritten} files, ${result.tutoriaRowsWritten} tutoria, ${result.tutoriaGroupRowsWritten} grups de tutoria).`, 'success');
           })
           .withFailureHandler(error => {
             stopEvaluationProgressPolling();

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <style>
+      @page { size: A4 landscape; margin: 10mm 12mm; }
+      body { margin: 0; color: #202124; font-family: Arial, sans-serif; font-size: 7.75pt; }
+      .page { page-break-after: always; }
+      .page.final-page { page-break-after: auto; }
+      .acta-header { width: 100%; margin-bottom: 8px; border-collapse: collapse; border-bottom: 2px solid #4a4a4a; }
+      .acta-header th { padding: 0 0 4px; text-align: left; font-size: 13pt; }
+      .acta-header td { padding: 2px 8px 5px 0; }
+      .header-title-line { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+      .header-tutor { flex: 0 0 auto; font-size: 0.75em; white-space: nowrap; }
+      .school { text-align: right; font-weight: 700; }
+      .page-number { margin: -3px 0 5px; color: #5f6368; text-align: right; font-size: 7pt; }
+      .signature-grid { width: 100%; border-collapse: collapse; table-layout: fixed; }
+      .signature-grid td { width: 25%; height: 25mm; padding: 3px 8px; border-top: 1px solid #70757a; border-bottom: 1px dotted #9aa0a6; vertical-align: top; }
+      .signature-grid tr:first-child td { border-top: 0; }
+      .teacher { margin-bottom: 4px; font-weight: 700; }
+      .tutor { color: #0b57d0; font-size: 7pt; }
+      .subjects { min-height: 10mm; line-height: 1.35; }
+      .signature-line { margin-top: 8mm; border-bottom: 1px solid #70757a; }
+      .empty { border-color: transparent !important; }
+    </style>
+  </head>
+  <body>
+    <? var renderedPage = 0; ?>
+    <? var totalPages = reports.reduce(function(total, report) { return total + report.pages.length; }, 0); ?>
+    <? reports.forEach(function(report) { ?>
+      <? report.pages.forEach(function(page) { renderedPage += 1; ?>
+      <section class="page <?= renderedPage === totalPages ? 'final-page' : '' ?>">
+        <table class="acta-header">
+          <tr><th colspan="4"><div class="header-title-line"><span><?= report.header.title ?></span><? if (report.header.tutorName) { ?><span class="header-tutor">Tutor: <?= report.header.tutorName ?></span><? } ?></div></th></tr>
+          <tr>
+            <td><strong>Data:</strong> <?= report.header.date ?></td>
+            <td><strong>Avaluació:</strong> <?= report.header.evaluationName ?></td>
+            <td><strong>Grup:</strong> <?= report.header.groupName ?></td>
+            <td class="school"><?= report.header.schoolName ?></td>
+          </tr>
+        </table>
+        <? if (page.pageCount > 1) { ?><div class="page-number">Pàgina <?= page.pageNumber ?> de <?= page.pageCount ?></div><? } ?>
+        <table class="signature-grid">
+          <? page.rows.forEach(function(row) { ?><tr>
+            <? row.forEach(function(entry) { ?>
+              <? if (entry) { ?>
+                <td>
+                  <div class="teacher"><?= entry.teacherName ?><? if (entry.isTutor) { ?> <span class="tutor">(tutor/a)</span><? } ?></div>
+                  <div class="subjects"><?= entry.subjects.join(' · ') ?></div>
+                  <div class="signature-line"></div>
+                </td>
+              <? } else { ?><td class="empty"></td><? } ?>
+            <? }); ?>
+          </tr><? }); ?>
+        </table>
+      </section>
+      <? }); ?>
+    <? }); ?>
+  </body>
+</html>

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <style>
+      @page { size: A4 landscape; margin: 5mm 30mm; }
+      body { margin: 0; color: #202124; font-family: Arial, sans-serif; font-size: 11pt; }
+      .document { page-break-after: always; }
+      .document:last-child { page-break-after: auto; }
+      .acta-header { width: 100%; margin: 4mm 0 7px; border-collapse: collapse; border-bottom: 1.5px solid #4a4a4a; }
+      .acta-header th { padding: 0 0 3px; text-align: left; font-size: 13pt; }
+      .acta-header td { padding: 1px 5px 3px 0; font-size: 10pt; }
+      .header-title-line { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+      .header-tutor { flex: 0 0 auto; font-size: 0.75em; white-space: nowrap; }
+      .school { text-align: right; font-weight: 700; }
+      .stats { width: 100%; margin: 0; border-collapse: collapse; table-layout: fixed; }
+      .stats col.student-column { width: 40%; }
+      .stats th, .stats td { border: 0.7px solid #aeb4bc; padding: 2.4px 1px; vertical-align: middle; }
+      .stats th { background: #d9dde3; font-size: 10.5pt; text-align: center; white-space: nowrap; }
+      .stats th:first-child, .stats td:first-child { text-align: left; font-weight: 700; white-space: nowrap; }
+      .stats td.grade { text-align: center; font-weight: 700; }
+      .summary-start td { border-top: 2px solid #4a4a4a; }
+      .summary-label { text-align: center !important; font-weight: 700; }
+      .legend-title { width: 100%; margin: 7px 0 3px; font-size: 9pt; font-weight: 700; }
+      .legend { width: 100%; margin: 0; border-collapse: collapse; table-layout: fixed; }
+      .legend td { width: 25%; padding: 1px 5px 1px 0; vertical-align: top; font-size: 8pt; }
+      .legend-code { display: inline-block; min-width: 25px; font-weight: 700; }
+      .ultra-dense { font-size: 10.25pt; }
+      .ultra-dense .acta-header { margin-bottom: 3px; }
+      .ultra-dense .acta-header th { font-size: 11pt; }
+      .ultra-dense .acta-header td { font-size: 7pt; }
+      .ultra-dense .stats th, .ultra-dense .stats td { padding: 1.4px 0.5px; }
+      .ultra-dense .stats th { font-size: 9.95pt; }
+      .ultra-dense .legend-title { margin-top: 2px; }
+      .ultra-dense .legend td { padding-top: 0; padding-bottom: 0; font-size: 7.75pt; }
+    </style>
+  </head>
+  <body>
+    <? reports.forEach(function(report) { ?>
+      <section class="document <?= report.density ?>">
+        <table class="acta-header">
+          <tr><th colspan="4"><div class="header-title-line"><span><?= report.header.title ?></span><? if (report.header.tutorName) { ?><span class="header-tutor">Tutor: <?= report.header.tutorName ?></span><? } ?></div></th></tr>
+          <tr>
+            <td><strong>Data:</strong> <?= report.header.date ?></td>
+            <td><strong>Avaluació:</strong> <?= report.header.evaluationName ?></td>
+            <td><strong>Grup:</strong> <?= report.header.groupName ?></td>
+            <td class="school"><?= report.header.schoolName ?></td>
+          </tr>
+        </table>
+        <table class="stats">
+          <colgroup>
+            <col class="student-column">
+            <? report.subjects.forEach(function() { ?><col style="width:<?= report.subjectColumnWidth ?>%"><? }); ?>
+          </colgroup>
+          <thead><tr>
+            <th>Alumnes</th>
+            <? report.subjects.forEach(function(subject) { ?><th><?= subject.abbreviation ?></th><? }); ?>
+          </tr></thead>
+          <tbody>
+            <? report.studentRows.forEach(function(row) { ?>
+              <tr>
+                <td><?= row.studentName ?></td>
+                <? row.grades.forEach(function(grade) { ?><td class="grade" style="background:<?= grade.background ?>"><?= grade.value ?></td><? }); ?>
+              </tr>
+            <? }); ?>
+            <? report.summaryRows.forEach(function(row, index) { ?>
+              <tr class="<?= index === 0 ? 'summary-start' : '' ?>">
+                <td class="summary-label" style="background:<?= row.background ?>"><?= row.grade ?></td>
+                <? row.percentages.forEach(function(value) { ?><td class="grade"><?= value ?></td><? }); ?>
+              </tr>
+            <? }); ?>
+          </tbody>
+        </table>
+        <div class="legend-title">Llegenda de matèries</div>
+        <table class="legend">
+          <? report.legendRows.forEach(function(row) { ?><tr>
+            <? row.forEach(function(subject) { ?><td><span class="legend-code"><?= subject.abbreviation ?></span><?= subject.fullName ?></td><? }); ?>
+            <? for (var empty = row.length; empty < 4; empty += 1) { ?><td></td><? } ?>
+          </tr><? }); ?>
+        </table>
+      </section>
+    <? }); ?>
+  </body>
+</html>

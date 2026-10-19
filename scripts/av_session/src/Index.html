@@ -116,7 +116,8 @@
       label[hidden],
       .bubble-button[hidden],
       .nav-arrow[hidden],
-      .tutor-comment[hidden] {
+      .tutor-comment[hidden],
+      .group-comment[hidden] {
         display: none;
       }
 
@@ -235,7 +236,8 @@
         font-weight: 700;
       }
 
-      .tutor-comment {
+      .tutor-comment,
+      .group-comment {
         margin-top: 8px;
       }
 
@@ -246,6 +248,67 @@
         display: flex;
         gap: 12px;
         align-items: center;
+        z-index: 6;
+      }
+
+      .print-control {
+        position: relative;
+      }
+
+      .print-menu {
+        position: absolute;
+        right: 0;
+        bottom: 70px;
+        width: min(330px, calc(100vw - 32px));
+        overflow: hidden;
+        border: 1px solid #c7cdd6;
+        border-radius: 8px;
+        background: #fff;
+        box-shadow: 0 12px 30px rgba(32, 33, 36, 0.24);
+      }
+
+      .print-menu[hidden] {
+        display: none;
+      }
+
+      .print-scope-menu {
+        right: 338px;
+        width: 170px;
+      }
+
+      .print-scope-title {
+        padding: 9px 14px 6px;
+        color: #5f6368;
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .print-menu button {
+        display: block;
+        width: 100%;
+        border: 0;
+        border-bottom: 1px solid #e4e8ef;
+        padding: 11px 14px;
+        background: #fff;
+        color: #202124;
+        font: inherit;
+        font-size: 13px;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .print-menu button:last-child {
+        border-bottom: 0;
+      }
+
+      .print-menu button:hover:not(:disabled),
+      .print-menu button:focus-visible {
+        background: #eef3fb;
+      }
+
+      .print-menu button:disabled {
+        color: #9aa0a6;
+        cursor: not-allowed;
       }
 
       .bubble-button {
@@ -259,6 +322,10 @@
         font-size: 26px;
         line-height: 58px;
         cursor: pointer;
+      }
+
+      #print-button {
+        font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
       }
 
       .bubble-button svg {
@@ -334,6 +401,13 @@
       }
 
       @media (max-width: 620px) {
+        .print-scope-menu {
+          right: 0;
+          bottom: 332px;
+        }
+      }
+
+      @media (max-width: 620px) {
         .toolbar {
           grid-template-columns: 1fr;
         }
@@ -383,16 +457,30 @@
           Comentari del tutor
           <textarea id="tutor-comment" rows="3"></textarea>
         </label>
+        <label id="group-comment-label" class="group-comment" for="group-comment">
+          <span id="group-comment-title">Acords de junta del grup</span>
+          <textarea id="group-comment" rows="3"></textarea>
+        </label>
       </section>
     </main>
 
     <div class="bubble-actions">
       <button id="save-button" class="bubble-button" type="button" aria-label="Desar canvis" title="Desar canvis" disabled>💾</button>
-      <button id="print-button" class="bubble-button" type="button" aria-label="Descarregar butlletí en PDF" title="Descarregar butlletí en PDF" disabled>
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6zM18 13h.01"/>
-        </svg>
-      </button>
+      <div class="print-control">
+        <div id="print-menu" class="print-menu" role="menu" hidden>
+          <button id="print-student-report" type="button" role="menuitem">Imprimir butlletí</button>
+          <button id="print-group-xlsx" type="button" role="menuitem">Imprimir estadístiques Excel</button>
+          <button id="print-group-statistics" type="button" role="menuitem">Imprimir acta de junta 1: estadístiques</button>
+          <button id="print-group-signatures" type="button" role="menuitem">Imprimir acta de junta 2: full signatures</button>
+          <button id="print-group-agreements" type="button" role="menuitem">Imprimir acta de junta 3: acords de junta</button>
+        </div>
+        <div id="print-scope-menu" class="print-menu print-scope-menu" role="menu" hidden>
+          <div class="print-scope-title">Àmbit d'impressió</div>
+          <button id="print-scope-current" type="button" role="menuitem">Aquest grup</button>
+          <button id="print-scope-all" type="button" role="menuitem">Tots els grups</button>
+        </div>
+        <button id="print-button" class="bubble-button" type="button" aria-label="Obrir opcions d'impressió" title="Imprimir" aria-haspopup="menu" aria-expanded="false" disabled>🖨️</button>
+      </div>
       <button id="csv-button" class="bubble-button" type="button" aria-label="Descarregar acta Excel" title="Descarregar acta Excel" hidden disabled>
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h8M8 9h2"/>
@@ -427,7 +515,11 @@
         rowsData: null,
         dirtyRows: new Map(),
         tutorCommentDirty: false,
-        lastTutorComment: ''
+        lastTutorComment: '',
+        groupCommentDirty: false,
+        lastGroupComment: '',
+        isAdmin: false,
+        pendingPrintKind: ''
       };
 
       document.addEventListener('DOMContentLoaded', loadInitialData);
@@ -436,13 +528,27 @@
       document.getElementById('student-selector').addEventListener('change', handleStudentChange);
       document.getElementById('subject-selector').addEventListener('change', handleSubjectChange);
       document.getElementById('save-button').addEventListener('click', saveChanges);
-      document.getElementById('print-button').addEventListener('click', downloadStudentReport);
+      document.getElementById('print-button').addEventListener('click', togglePrintMenu);
+      document.getElementById('print-student-report').addEventListener('click', downloadStudentReport);
+      document.getElementById('print-group-xlsx').addEventListener('click', downloadGroupXlsx);
+      document.getElementById('print-group-statistics').addEventListener('click', () => requestGroupPdf('statistics'));
+      document.getElementById('print-group-signatures').addEventListener('click', () => requestGroupPdf('signatures'));
+      document.getElementById('print-group-agreements').addEventListener('click', () => requestGroupPdf('agreements'));
+      document.getElementById('print-scope-current').addEventListener('click', () => confirmPrintScope(false));
+      document.getElementById('print-scope-all').addEventListener('click', () => confirmPrintScope(true));
       document.getElementById('csv-button').addEventListener('click', downloadGroupXlsx);
       document.getElementById('bulk-pdf-button').addEventListener('click', generateMissingClosedBulletins);
       document.getElementById('bulk-mail-button').addEventListener('click', sendPendingClosedEmails);
       document.getElementById('prev-button').addEventListener('click', () => navigateSelection(-1));
       document.getElementById('next-button').addEventListener('click', () => navigateSelection(1));
       document.getElementById('tutor-comment').addEventListener('input', handleTutorCommentInput);
+      document.getElementById('group-comment').addEventListener('input', handleGroupCommentInput);
+      document.addEventListener('click', event => {
+        if (!event.target.closest('.print-control')) closePrintMenu();
+      });
+      document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') closePrintMenu();
+      });
 
       function loadInitialData() {
         setBusy(true, 'Carregant dades...');
@@ -471,7 +577,8 @@
       function renderContext(data) {
         const actingTeacher = data.actingTeacher || {};
         const effectiveTeacher = data.effectiveTeacher || {};
-        document.getElementById('admin-note').hidden = !data.isAdmin;
+        state.isAdmin = data.isAdmin === true;
+        document.getElementById('admin-note').hidden = !state.isAdmin;
         document.getElementById('subtitle').textContent = data.isSubstituteActing
           ? `${actingTeacher.fullName} actuant per ${effectiveTeacher.fullName}`
           : effectiveTeacher.fullName || data.userEmail || '';
@@ -501,12 +608,14 @@
       }
 
       function handlePrimarySelectionChange() {
+        closePrintMenu();
         syncPrimarySelectionFromDom();
         state.evaluationData = null;
         state.rowsData = null;
         state.dirtyRows = new Map();
         state.tutorCommentDirty = false;
         state.lastTutorComment = '';
+        resetGroupComment();
         resetDetailSelectors();
         clearTable();
 
@@ -531,6 +640,7 @@
             state.dirtyRows = new Map();
             state.tutorCommentDirty = false;
             state.lastTutorComment = '';
+            syncGroupComment();
             setBusy(false);
             if (isClosedMode()) {
               renderClosedMode();
@@ -570,6 +680,7 @@
         document.getElementById('prev-button').hidden = false;
         document.getElementById('next-button').hidden = false;
         document.getElementById('tutor-comment-label').hidden = false;
+        document.getElementById('group-comment-label').hidden = !(state.evaluationData && state.evaluationData.groupComment);
 
         const studentSelector = document.getElementById('student-selector');
         const subjectSelector = document.getElementById('subject-selector');
@@ -597,6 +708,7 @@
         document.getElementById('prev-button').hidden = true;
         document.getElementById('next-button').hidden = true;
         document.getElementById('tutor-comment-label').hidden = true;
+        document.getElementById('group-comment-label').hidden = true;
         renderClosedTable();
       }
 
@@ -806,6 +918,42 @@
         textarea.placeholder = 'Selecciona un alumne per editar el comentari.';
       }
 
+      function syncGroupComment() {
+        const textarea = document.getElementById('group-comment');
+        updateGroupCommentTitle();
+        if (!state.evaluationData || !state.evaluationData.groupComment) {
+          resetGroupComment();
+          document.getElementById('group-comment-label').hidden = true;
+          return;
+        }
+
+        const groupComment = state.evaluationData.groupComment.groupComment || '';
+        state.lastGroupComment = groupComment;
+        state.groupCommentDirty = false;
+        textarea.value = groupComment;
+        textarea.disabled = false;
+        textarea.dataset.locked = 'false';
+        textarea.placeholder = '';
+      }
+
+      function resetGroupComment() {
+        const textarea = document.getElementById('group-comment');
+        updateGroupCommentTitle();
+        state.groupCommentDirty = false;
+        state.lastGroupComment = '';
+        textarea.value = '';
+        textarea.disabled = true;
+        textarea.dataset.locked = 'true';
+        textarea.placeholder = 'Selecciona una avaluació i un grup.';
+      }
+
+      function updateGroupCommentTitle() {
+        const title = document.getElementById('group-comment-title');
+        title.textContent = state.selectedGroup
+          ? `Acords de junta del grup ${state.selectedGroup}`
+          : 'Acords de junta del grup';
+      }
+
       function getTutorCommentForCurrentStudent() {
         if (!state.evaluationData || !state.rowsData) return '';
 
@@ -962,6 +1110,12 @@
         updateSaveButton();
       }
 
+      function handleGroupCommentInput() {
+        if (!state.evaluationData || !state.evaluationData.groupComment || isClosedMode()) return;
+        state.groupCommentDirty = document.getElementById('group-comment').value !== state.lastGroupComment;
+        updateSaveButton();
+      }
+
       function collectRowPayload(tr) {
         const concepts = {};
         Array.from(tr.querySelectorAll('[data-role^="concept:"]')).forEach(input => {
@@ -978,7 +1132,7 @@
 
       function saveChanges() {
         const rows = Array.from(state.dirtyRows.values());
-        if (!state.selectedEvaluation || !state.selectedGroup || (!rows.length && !state.tutorCommentDirty)) return;
+        if (!state.selectedEvaluation || !state.selectedGroup || (!rows.length && !state.tutorCommentDirty && !state.groupCommentDirty)) return;
 
         const selectedStudent = document.getElementById('student-selector').value;
         const selectedSubject = document.getElementById('subject-selector').value;
@@ -989,8 +1143,10 @@
             mergeSavedRowsIntoEvaluationData(updatedRows);
             mergeSavedRowsIntoRowsData(updatedRows);
             mergeSavedTutorComment(data.tutorComment);
+            mergeSavedGroupComment(data.groupComment);
             state.dirtyRows = new Map();
             state.tutorCommentDirty = false;
+            state.groupCommentDirty = false;
             setBusy(false);
             renderTable();
             setStatus('Canvis desats.', 'success');
@@ -1007,11 +1163,14 @@
             rows,
             studentAccountId: getCurrentStudentAccountId(),
             tutorComment: document.getElementById('tutor-comment').value,
-            tutorCommentDirty: state.tutorCommentDirty
+            tutorCommentDirty: state.tutorCommentDirty,
+            groupComment: document.getElementById('group-comment').value,
+            groupCommentDirty: state.groupCommentDirty
           });
       }
 
       function downloadStudentReport() {
+        closePrintMenu();
         if (!state.selectedEvaluation || !state.selectedGroup || !state.rowsData || state.rowsData.mode !== 'student') return;
 
         const selectedStudent = document.getElementById('student-selector').value;
@@ -1152,7 +1311,8 @@
       }
 
       function downloadGroupXlsx() {
-        if (!isGroupActaMode()) return;
+        closePrintMenu();
+        if (!hasGroupActaRows()) return;
 
         setBusy(true, 'Generant l\'acta del grup...');
         google.script.run
@@ -1169,6 +1329,86 @@
             sheetName: state.selectedEvaluation,
             group: state.selectedGroup
           });
+      }
+
+      function requestGroupPdf(kind) {
+        if (!state.isAdmin) {
+          downloadGroupPdf(kind, false);
+          return;
+        }
+
+        state.pendingPrintKind = kind;
+        document.getElementById('print-scope-menu').hidden = false;
+      }
+
+      function confirmPrintScope(allGroups) {
+        const kind = state.pendingPrintKind;
+        if (!kind) return;
+        downloadGroupPdf(kind, allGroups === true);
+      }
+
+      function downloadGroupPdf(kind, allGroups) {
+        closePrintMenu();
+        if (!isSessionPrintMode() || !hasGroupActaRows()) return;
+
+        const actions = {
+          statistics: {
+            method: 'createGroupStatisticsPdf',
+            busy: 'Generant l\'acta d\'estadístiques...',
+            success: 'Acta d\'estadístiques generada.'
+          },
+          signatures: {
+            method: 'createGroupSignaturesPdf',
+            busy: 'Generant el full de signatures...',
+            success: 'Full de signatures generat.'
+          },
+          agreements: {
+            method: 'createGroupAgreementsPdf',
+            busy: 'Generant l\'acta d\'acords...',
+            success: 'Acta d\'acords generada.'
+          }
+        };
+        const action = actions[kind];
+        if (!action) return;
+
+        setBusy(true, allGroups ? `${action.busy} Tots els grups...` : action.busy);
+        google.script.run
+          .withSuccessHandler(file => {
+            setBusy(false);
+            triggerFileDownload(file, 'application/pdf');
+            setStatus(action.success, 'success');
+          })
+          .withFailureHandler(error => {
+            setBusy(false);
+            showError(error);
+          })
+          [allGroups ? 'createAllGroupsActaPdf' : action.method]({
+            sheetName: state.selectedEvaluation,
+            group: state.selectedGroup,
+            kind,
+            groupComment: isJuntaMode() ? document.getElementById('group-comment').value : null
+          });
+      }
+
+      function togglePrintMenu() {
+        const menu = document.getElementById('print-menu');
+        const shouldOpen = menu.hidden;
+        if (!shouldOpen) {
+          closePrintMenu();
+          return;
+        }
+
+        menu.hidden = false;
+        document.getElementById('print-scope-menu').hidden = true;
+        state.pendingPrintKind = '';
+        document.getElementById('print-button').setAttribute('aria-expanded', 'true');
+      }
+
+      function closePrintMenu() {
+        document.getElementById('print-menu').hidden = true;
+        document.getElementById('print-scope-menu').hidden = true;
+        document.getElementById('print-button').setAttribute('aria-expanded', 'false');
+        state.pendingPrintKind = '';
       }
 
       function reloadClosedData(message, type) {
@@ -1207,12 +1447,22 @@
       function triggerFileDownload(file, fallbackMimeType) {
         if (!file || !file.base64) throw new Error('No s\'ha pogut generar el fitxer.');
 
+        const binary = atob(file.base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let index = 0; index < binary.length; index += 1) {
+          bytes[index] = binary.charCodeAt(index);
+        }
+        const blob = new Blob([bytes], {
+          type: file.mimeType || fallbackMimeType || 'application/octet-stream'
+        });
+        const objectUrl = URL.createObjectURL(blob);
         const link = document.createElement('a');
-        link.href = `data:${file.mimeType || fallbackMimeType || 'application/octet-stream'};base64,${file.base64}`;
+        link.href = objectUrl;
         link.download = file.fileName || 'descarrega';
         document.body.appendChild(link);
         link.click();
         link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
       }
 
       function mergeClosedBulletinResult(result) {
@@ -1262,6 +1512,14 @@
         }
         state.lastTutorComment = savedComment.tutorComment || '';
         document.getElementById('tutor-comment').value = state.lastTutorComment;
+      }
+
+      function mergeSavedGroupComment(savedComment) {
+        if (!savedComment || !state.evaluationData) return;
+
+        state.evaluationData.groupComment = savedComment;
+        state.lastGroupComment = savedComment.groupComment || '';
+        document.getElementById('group-comment').value = state.lastGroupComment;
       }
 
       function clearTable() {
@@ -1328,24 +1586,34 @@
         saveButton.hidden = isClosedMode();
         saveButton.disabled =
           isClosedMode() ||
-          (!state.dirtyRows.size && !state.tutorCommentDirty) ||
+          (!state.dirtyRows.size && !state.tutorCommentDirty && !state.groupCommentDirty) ||
           document.body.classList.contains('busy');
       }
 
       function updatePrintButton() {
         const printButton = document.getElementById('print-button');
-        printButton.hidden = isClosedMode();
+        const showPrintButton = isSessionPrintMode();
+        printButton.closest('.print-control').hidden = !showPrintButton;
         printButton.disabled =
-          isClosedMode() ||
+          !showPrintButton ||
           document.body.classList.contains('busy') ||
-          !state.rowsData ||
-          state.rowsData.mode !== 'student' ||
-          !(state.rowsData.rows || []).length;
+          !hasGroupActaRows();
+
+        const canPrintStudent = showPrintButton &&
+          state.rowsData &&
+          state.rowsData.mode === 'student' &&
+          (state.rowsData.rows || []).length;
+        document.getElementById('print-student-report').disabled = !canPrintStudent;
+        ['print-group-xlsx', 'print-group-statistics', 'print-group-signatures', 'print-group-agreements']
+          .forEach(id => {
+            document.getElementById(id).disabled = !showPrintButton || !hasGroupActaRows();
+          });
+        if (!showPrintButton) closePrintMenu();
       }
 
       function updateClosedActionButtons() {
         const csvButton = document.getElementById('csv-button');
-        csvButton.hidden = !isGroupActaMode();
+        csvButton.hidden = !isClosedMode();
         csvButton.disabled = !hasGroupActaRows() || document.body.classList.contains('busy');
 
         const showClosedActions = isClosedMode();
@@ -1371,11 +1639,15 @@
         }
         Array.from(document.querySelectorAll('select, input, textarea, button')).forEach(element => {
           if (element.id === 'save-button') {
-            element.disabled = isBusy || isClosedMode() || (!state.dirtyRows.size && !state.tutorCommentDirty);
+            element.disabled = isBusy || isClosedMode() || (!state.dirtyRows.size && !state.tutorCommentDirty && !state.groupCommentDirty);
           } else if (element.id === 'print-button') {
-            element.disabled = isBusy || isClosedMode() || !state.rowsData || state.rowsData.mode !== 'student' || !(state.rowsData.rows || []).length;
+            element.disabled = isBusy || !isSessionPrintMode() || !hasGroupActaRows();
           } else if (element.id === 'csv-button') {
             element.disabled = isBusy || !hasGroupActaRows();
+          } else if (element.id === 'print-student-report') {
+            element.disabled = isBusy || !state.rowsData || state.rowsData.mode !== 'student' || !(state.rowsData.rows || []).length;
+          } else if (['print-group-xlsx', 'print-group-statistics', 'print-group-signatures', 'print-group-agreements'].includes(element.id)) {
+            element.disabled = isBusy || !isSessionPrintMode() || !hasGroupActaRows();
           } else if (['bulk-pdf-button', 'bulk-mail-button'].includes(element.id)) {
             const hasClosedRows = isClosedMode() && state.evaluationData && (state.evaluationData.closedRows || []).length;
             element.disabled = isBusy || !hasClosedRows;
@@ -1437,13 +1709,18 @@
       }
 
       function isGroupActaMode() {
-        return isClosedMode() || isJuntaMode();
+        return isClosedMode() || isSessionPrintMode();
+      }
+
+      function isSessionPrintMode() {
+        const status = state.evaluationData && state.evaluationData.evaluation && state.evaluationData.evaluation.status;
+        return status === 'Avaluació professors' || status === 'Mode junta';
       }
 
       function hasGroupActaRows() {
         if (!state.evaluationData) return false;
         if (isClosedMode()) return !!(state.evaluationData.closedRows || []).length;
-        if (isJuntaMode()) return !!(state.evaluationData.rows || []).length;
+        if (isSessionPrintMode()) return !!(state.evaluationData.rows || []).length;
         return false;
       }
     </script>

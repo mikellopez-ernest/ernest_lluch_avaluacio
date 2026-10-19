@@ -17,12 +17,17 @@ const TEACHER_EVALUATION_STATUS = 'Avaluació professors';
 const CLOSED_STATUS = 'Tancada';
 const AVAILABLE_EVALUATION_STATUSES = [TEACHER_EVALUATION_STATUS, MODE_JUNTA_STATUS, CLOSED_STATUS];
 const ADMIN_PRIVILEGES_MARKER = 'ADMIN_PRIVILEGES';
+const ADMIN_PRIVILEGES_PROPERTY = 'admin_privileges';
 const STUDENT_ACCOUNT_ID_HEADER = 'student_account_id';
 const SUBJECT_ORDER_HEADER = 'subject_order';
 const SUBJECT_EVALUATION_HEADER = 'Avaluació de la matèria';
 const TUTORING_GROUP_HEADER = 'grup_tutoria';
 const TUTOR_COMMENT_HEADER = 'Comentari_tutor';
 const TUTORIA_SHEET_SUFFIX = '_tutoria';
+const TUTORIA_GROUPS_SHEET_SUFFIX = '_tutoria_grups';
+const GROUP_COMMENT_HEADER = 'Comentari_grup';
+const UPDATED_AT_HEADER = 'updated_at';
+const UPDATED_BY_HEADER = 'updated_by';
 const CONTACTS_CACHE_SHEET_NAME = 'contacts_cache';
 const DRIVE_FOLDER_TUTOR_PROPERTY = 'DRIVE_FOLDER_TUTOR';
 const REPORT_LOGO_BASE64 = [
@@ -220,6 +225,9 @@ function getAvSessionEvaluationData(payload) {
   const table = readEvaluationTable_(sheet);
   const rowsForGroup = table.rows.filter(row => rowIncludesGroup_(row, selectedGroup));
   const tutorComments = readTutoriaCommentsForGroup_(gradesSpreadsheet, evaluation.sheetName, selectedGroup);
+  const groupComment = isEvaluationGradeEditable_(evaluation)
+    ? readTutoriaGroupComment_(gradesSpreadsheet, evaluation.sheetName, selectedGroup)
+    : null;
 
   return {
     evaluation,
@@ -229,6 +237,7 @@ function getAvSessionEvaluationData(payload) {
     rows: rowsForGroup,
     tutorCommentsByStudentAccountId: tutorComments.byStudentAccountId,
     tutorCommentsByStudentName: tutorComments.byStudentName,
+    groupComment,
     gradeFieldsEditable: isEvaluationGradeEditable_(evaluation),
     subjectEvaluationOptions: config.subjectEvaluationOptions,
     subjectEvaluationReducedNames: config.subjectEvaluationReducedNames,
@@ -290,8 +299,9 @@ function saveAvSessionRows(payload) {
   const selectedSubject = String(payload && payload.subject || '').trim();
   const rows = Array.isArray(payload && payload.rows) ? payload.rows : [];
   const tutorCommentDirty = payload && payload.tutorCommentDirty === true;
+  const groupCommentDirty = payload && payload.groupCommentDirty === true;
   if (!selectedGroup) throw new Error('Cal seleccionar un grup.');
-  if (!rows.length && !tutorCommentDirty) return getAvSessionRows(payload);
+  if (!rows.length && !tutorCommentDirty && !groupCommentDirty) return getAvSessionRows(payload);
   if (tutorCommentDirty && !selectedStudent) {
     throw new Error('El comentari del tutor només es pot desar amb un alumne seleccionat.');
   }
@@ -311,6 +321,7 @@ function saveAvSessionRows(payload) {
     const gradesSpreadsheet = openLogicalTableSpreadsheet_(GRADES_TABLE_NAME);
     const dirtySheetRows = uniqueSortedNumbers_(rows.map(row => row && row.sheetRow));
     let savedTutorComment = null;
+    let savedGroupComment = null;
     let updatedRows = [];
 
     if (dirtySheetRows.length) {
@@ -384,6 +395,19 @@ function saveAvSessionRows(payload) {
       );
     }
 
+    if (groupCommentDirty) {
+      if (!isEvaluationGradeEditable_(activeEvaluation)) {
+        throw new Error(`Els acords de junta només es poden editar en estat "${MODE_JUNTA_STATUS}".`);
+      }
+      savedGroupComment = saveTutoriaGroupComment_(
+        gradesSpreadsheet,
+        activeEvaluation.sheetName,
+        selectedGroup,
+        String(payload && payload.groupComment || ''),
+        getActiveUserEmail_()
+      );
+    }
+
     return {
       evaluation: activeEvaluation,
       group: selectedGroup,
@@ -393,6 +417,7 @@ function saveAvSessionRows(payload) {
       updatedRows,
       gradeFieldsEditable: isEvaluationGradeEditable_(activeEvaluation),
       tutorComment: savedTutorComment,
+      groupComment: savedGroupComment,
       message: ''
     };
   } finally {
@@ -535,6 +560,59 @@ function createClosedGroupCsv(payload) {
   return createClosedGroupXlsx(payload);
 }
 
+function createGroupStatisticsPdf(payload) {
+  return withGroupActaContext_(payload, context => createActaPdfResponse_(
+    'ActaStatistics',
+    buildGroupStatisticsPdfModel_(context),
+    `acta_1_estadistiques_${sanitizeFileNamePart_(context.selectedGroup)}_${sanitizeFileNamePart_(context.evaluation.name)}.pdf`
+  ));
+}
+
+function createGroupSignaturesPdf(payload) {
+  return withGroupActaContext_(payload, context => createActaPdfResponse_(
+    'ActaSignatures',
+    buildGroupSignaturesPdfModel_(context),
+    `acta_2_signatures_${sanitizeFileNamePart_(context.selectedGroup)}_${sanitizeFileNamePart_(context.evaluation.name)}.pdf`
+  ));
+}
+
+function createGroupAgreementsPdf(payload) {
+  return withGroupActaContext_(payload, context => createActaPdfResponse_(
+    'ActaAgreements',
+    buildGroupAgreementsPdfModel_(context, payload),
+    `acta_3_acords_${sanitizeFileNamePart_(context.selectedGroup)}_${sanitizeFileNamePart_(context.evaluation.name)}.pdf`
+  ));
+}
+
+function createAllGroupsActaPdf(payload) {
+  const kind = String(payload && payload.kind || '').trim();
+  const definitions = {
+    statistics: {
+      templateName: 'ActaStatistics',
+      buildReport: context => buildGroupStatisticsPdfModel_(context),
+      filePrefix: 'acta_1_estadistiques'
+    },
+    signatures: {
+      templateName: 'ActaSignatures',
+      buildReport: context => buildGroupSignaturesPdfModel_(context),
+      filePrefix: 'acta_2_signatures'
+    },
+    agreements: {
+      templateName: 'ActaAgreements',
+      buildReport: context => buildGroupAgreementsPdfModel_(context, payload),
+      filePrefix: 'acta_3_acords'
+    }
+  };
+  const definition = definitions[kind];
+  if (!definition) throw new Error('Tipus de document no vàlid.');
+
+  return withAllGroupsActaContexts_(payload, contexts => createActaPdfResponse_(
+    definition.templateName,
+    contexts.map(definition.buildReport),
+    `${definition.filePrefix}_tots_els_grups_${sanitizeFileNamePart_(contexts[0].evaluation.name)}.pdf`
+  ));
+}
+
 function buildRowsResponseFromTable_(evaluation, selectedGroup, selectedStudent, selectedSubject, table) {
   const rows = table.rows
     .filter(row => rowIncludesGroup_(row, selectedGroup))
@@ -619,19 +697,54 @@ function withGroupActaContext_(payload, callback) {
   const visibilityContext = resolveUserVisibilityContext_();
   assertAllowedGroup_(selectedGroup, visibilityContext.visibleGroups);
   const evaluation = getAvailableEvaluationFromPayload_(payload);
-  if (!isEvaluationClosed_(evaluation) && !isEvaluationGradeEditable_(evaluation)) {
-    throw new Error('Aquesta acció només està disponible en mode junta o amb una avaluació tancada.');
-  }
 
   const gradesSpreadsheet = openLogicalTableSpreadsheet_(GRADES_TABLE_NAME);
+  const evaluationTable = readEvaluationTable_(
+    getRequiredSheet_(gradesSpreadsheet, evaluation.sheetName)
+  );
   const closedRows = readTutoriaRowsForGroup_(gradesSpreadsheet, evaluation.sheetName, selectedGroup);
   const context = {
     selectedGroup,
     evaluation,
     gradesSpreadsheet,
+    evaluationTable,
     closedRows
   };
   return callback(context);
+}
+
+function withAllGroupsActaContexts_(payload, callback) {
+  assertAllowedUser_();
+
+  const visibilityContext = resolveUserVisibilityContext_();
+  if (!visibilityContext.isAdmin) {
+    throw new Error('Cal tenir permisos d\'administració per imprimir tots els grups.');
+  }
+
+  const evaluation = getAvailableEvaluationFromPayload_(payload);
+  const gradesSpreadsheet = openLogicalTableSpreadsheet_(GRADES_TABLE_NAME);
+  const sheet = getRequiredSheet_(gradesSpreadsheet, evaluation.sheetName);
+  const evaluationTable = readEvaluationTable_(sheet);
+  const evaluationConfig = readEvaluationConfig_(gradesSpreadsheet, evaluation.sheetName);
+  const allTutoriaRows = readAllTutoriaRows_(gradesSpreadsheet, evaluation.sheetName);
+  const groupComments = readAllTutoriaGroupComments_(gradesSpreadsheet, evaluation.sheetName);
+  const groupNames = uniqueInOrder_(evaluationTable.rows.reduce((groups, row) => (
+    groups.concat(row.tutoringGroups || [])
+  ), []));
+  if (!groupNames.length) throw new Error('No hi ha grups disponibles en aquesta avaluació.');
+
+  const contexts = groupNames.map(groupName => ({
+    selectedGroup: groupName,
+    evaluation,
+    gradesSpreadsheet,
+    evaluationTable,
+    evaluationConfig,
+    closedRows: allTutoriaRows.filter(row => rowIncludesGroup_(row, groupName)),
+    storedGroupComment: groupComments.get(normalizeGroupMatch_(groupName)) || null
+  })).filter(context => context.closedRows.length);
+  if (!contexts.length) throw new Error('No hi ha dades de tutoria per generar les actes.');
+
+  return callback(contexts);
 }
 
 function findClosedTutoriaTarget_(context, payload) {
@@ -843,10 +956,276 @@ function createClosedGroupXlsxFile_(context) {
   }
 }
 
+function createActaPdfResponse_(templateName, report, fileName) {
+  const template = HtmlService.createTemplateFromFile(templateName);
+  template.reports = Array.isArray(report) ? report : [report];
+  const html = template.evaluate().getContent();
+  const pdfBlob = Utilities.newBlob(html, MimeType.HTML, `${templateName}.html`)
+    .getAs(MimeType.PDF)
+    .setName(fileName);
+
+  return {
+    fileName: pdfBlob.getName(),
+    mimeType: MimeType.PDF,
+    base64: Utilities.base64Encode(pdfBlob.getBytes())
+  };
+}
+
+function buildActaHeader_(context, title) {
+  return {
+    title,
+    schoolName: 'Institut Ernest Lluch i Martín',
+    date: Utilities.formatDate(new Date(), TIMEZONE, 'dd/MM/yyyy'),
+    evaluationName: context.evaluation.name,
+    groupName: context.selectedGroup,
+    tutorName: resolveGroupTutorName_(context)
+  };
+}
+
+function resolveGroupTutorName_(context) {
+  const table = context.evaluationTable || readEvaluationTable_(
+    getRequiredSheet_(context.gradesSpreadsheet, context.evaluation.sheetName)
+  );
+  const groupRows = table.rows.filter(row => rowIncludesGroup_(row, context.selectedGroup));
+  const tutorNames = uniqueInOrder_(groupRows
+    .filter(row => normalizeText_(row.subjectFullName) === 'TUTORIA')
+    .map(row => String(row.teacherFullName || '').trim())
+    .filter(Boolean));
+  if (tutorNames.length) return tutorNames[0];
+
+  const tutoriaSheetNames = uniqueInOrder_((context.closedRows || [])
+    .map(row => String(row.teacherFullName || '').trim())
+    .filter(Boolean));
+  return tutoriaSheetNames[0] || '';
+}
+
+function buildGroupStatisticsPdfModel_(context) {
+  const acta = buildClosedGroupActaModel_(context);
+  const values = acta.values;
+  const subjectNames = values[1].slice(2, 2 + acta.subjectCount);
+  const subjects = buildStatisticsSubjectAbbreviations_(subjectNames);
+  const studentRows = values.slice(2, 2 + acta.studentCount).map(row => ({
+    studentName: row[0],
+    grades: row.slice(2, 2 + acta.subjectCount).map(grade => ({
+      value: grade,
+      background: grade ? acta.gradeColors[grade] || '#FFFFFF' : '#FFFFFF'
+    }))
+  }));
+  const summaryRows = ['NA', 'AS', 'AN', 'AE'].map((grade, gradeIndex) => {
+    const row = values[acta.summaryStartRow - 1 + gradeIndex];
+    return {
+      grade,
+      background: acta.gradeColors[grade] || '#FFFFFF',
+      percentages: row.slice(2, 2 + acta.subjectCount)
+        .map(value => `${Math.round(Number(value || 0) * 100)}%`)
+    };
+  });
+
+  return {
+    header: buildActaHeader_(context, "Acta de la junta d'avaluació 1: estadístiques"),
+    subjects,
+    studentRows,
+    summaryRows,
+    density: 'ultra-dense',
+    subjectColumnWidth: (60 / Math.max(1, subjects.length)).toFixed(3),
+    legendRows: chunkArray_(subjects, 4)
+  };
+}
+
+function buildStatisticsSubjectAbbreviations_(subjectNames) {
+  const assignedAbbreviations = new Set(subjectNames
+    .map(getPreferredSubjectAbbreviation_)
+    .filter(Boolean));
+  return subjectNames.map(subjectName => {
+    const preferred = getPreferredSubjectAbbreviation_(subjectName);
+    let abbreviation = preferred || buildFallbackSubjectAbbreviation_(subjectName);
+
+    if (!preferred) {
+      const base = abbreviation;
+      let suffix = 2;
+      while (assignedAbbreviations.has(abbreviation)) {
+        abbreviation = `${base}${suffix}`;
+        suffix += 1;
+      }
+      assignedAbbreviations.add(abbreviation);
+    }
+
+    return {
+      fullName: subjectName,
+      abbreviation
+    };
+  });
+}
+
+function getPreferredSubjectAbbreviation_(subjectName) {
+  const name = normalizeText_(subjectName).replace(/[^A-Z0-9]+/g, ' ').trim();
+  const rules = [
+    { terms: ['MATEMATIQUES B'], abbreviation: 'MB' },
+    { terms: ['MATEMATIQUES A'], abbreviation: 'MA' },
+    { terms: ['FISICA I QUIMICA', 'FISICA QUIMICA'], abbreviation: 'FQ' },
+    { terms: ['EDUCACIO FISICA', 'ED FISICA'], abbreviation: 'EF' },
+    { terms: ['CULTURA I VALORS ETICS', 'CULTURA VALORS ETICS'], abbreviation: 'ET' },
+    { terms: ['ARTS ESCENIQUES', 'TEATRE'], abbreviation: 'AR' },
+    { terms: ['VISUAL I PLASTICA', 'VISUAL PLASTICA'], abbreviation: 'VP' },
+    { terms: ['TEC D EST', 'TECNIQUES D ESTUDI'], abbreviation: 'TD' },
+    { terms: ['FRANCES'], abbreviation: 'FR' },
+    { terms: ['BIOLOGIA'], abbreviation: 'BI' },
+    { terms: ['DIGITALITZACIO'], abbreviation: 'DI' },
+    { terms: ['TECNOLOGIA', 'TENOLOGIA'], abbreviation: 'TE' },
+    { terms: ['MATEMATIQUES'], abbreviation: 'MA' },
+    { terms: ['CASTELLA'], abbreviation: 'CS' },
+    { terms: ['CATALA'], abbreviation: 'CA' },
+    { terms: ['ANGLES'], abbreviation: 'AN' },
+    { terms: ['SOCIALS'], abbreviation: 'SO' },
+    { terms: ['RELIGIO'], abbreviation: 'RE' },
+    { terms: ['ORIENTACIO'], abbreviation: 'OR' },
+    { terms: ['LLATI'], abbreviation: 'LL' },
+    { terms: ['MUSICA'], abbreviation: 'MU' },
+    { terms: ['ECONOMIA'], abbreviation: 'EC' },
+    { terms: ['EMPRENEDORIA'], abbreviation: 'EM' },
+    { terms: ['FILOSOFIA'], abbreviation: 'FI' }
+  ];
+  const match = rules.find(rule => rule.terms.some(term => name.indexOf(term) !== -1));
+  return match ? match.abbreviation : '';
+}
+
+function buildFallbackSubjectAbbreviation_(subjectName) {
+  const ignoredWords = new Set(['A', 'AL', 'DE', 'DEL', 'D', 'EL', 'ELS', 'EN', 'I', 'LA', 'LES', 'PER']);
+  const words = normalizeText_(subjectName)
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(word => word && !ignoredWords.has(word) && !/^\d/.test(word));
+  if (!words.length) return 'MAT';
+  if (words.length === 1) return words[0].slice(0, 2);
+  return words.slice(0, 3).map(word => word.charAt(0)).join('');
+}
+
+function chunkArray_(items, size) {
+  const chunks = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
+
+function buildGroupSignaturesPdfModel_(context) {
+  const table = context.evaluationTable || readEvaluationTable_(
+    getRequiredSheet_(context.gradesSpreadsheet, context.evaluation.sheetName)
+  );
+  const evaluationRows = table.rows.filter(row => rowIncludesGroup_(row, context.selectedGroup));
+  const teachersByName = new Map();
+
+  function addTeacher(teacherName, subjectName, subjectOrder, isTutor) {
+    const cleanTeacherName = String(teacherName || '').trim();
+    const cleanSubjectName = String(subjectName || '').trim();
+    if (!cleanTeacherName) return;
+
+    const key = normalizeText_(cleanTeacherName);
+    if (!teachersByName.has(key)) {
+      teachersByName.set(key, {
+        teacherName: cleanTeacherName,
+        isTutor: false,
+        firstOrder: '',
+        subjectsByName: new Map()
+      });
+    }
+
+    const teacher = teachersByName.get(key);
+    teacher.isTutor = teacher.isTutor || isTutor === true;
+    const cleanOrder = sanitizeOrder_(subjectOrder);
+    if (cleanOrder !== '' && (teacher.firstOrder === '' || cleanOrder < teacher.firstOrder)) {
+      teacher.firstOrder = cleanOrder;
+    }
+    if (cleanSubjectName) {
+      const subjectKey = normalizeText_(cleanSubjectName);
+      const existing = teacher.subjectsByName.get(subjectKey);
+      if (!existing || (cleanOrder !== '' && (existing.order === '' || cleanOrder < existing.order))) {
+        teacher.subjectsByName.set(subjectKey, { name: cleanSubjectName, order: cleanOrder });
+      }
+    }
+  }
+
+  evaluationRows.forEach(row => addTeacher(
+    row.teacherFullName,
+    row.subjectFullName,
+    row.subjectOrder,
+    false
+  ));
+  context.closedRows.forEach(row => addTeacher(
+    row.teacherFullName,
+    row.subjectFullName,
+    row.subjectOrder,
+    true
+  ));
+
+  const teachers = Array.from(teachersByName.values())
+    .map(teacher => ({
+      teacherName: teacher.teacherName,
+      isTutor: teacher.isTutor,
+      firstOrder: teacher.firstOrder,
+      subjects: Array.from(teacher.subjectsByName.values())
+        .sort((a, b) => compareOrder_(a.order, b.order) || compareText_(a.name, b.name))
+        .map(subject => subject.name)
+    }))
+    .sort((a, b) => {
+      if (a.isTutor !== b.isTutor) return a.isTutor ? -1 : 1;
+      return compareOrder_(a.firstOrder, b.firstOrder) || compareText_(a.teacherName, b.teacherName);
+    });
+  const pageSize = 24;
+  const pages = [];
+
+  for (let start = 0; start < Math.max(teachers.length, 1); start += pageSize) {
+    const entries = teachers.slice(start, start + pageSize);
+    const rows = [];
+    for (let offset = 0; offset < entries.length; offset += 4) {
+      const row = entries.slice(offset, offset + 4);
+      while (row.length < 4) row.push(null);
+      rows.push(row);
+    }
+    if (!rows.length) rows.push([null, null, null, null]);
+    pages.push({ rows });
+  }
+
+  pages.forEach((page, index) => {
+    page.pageNumber = index + 1;
+    page.pageCount = pages.length;
+  });
+
+  return {
+    header: buildActaHeader_(context, "Acta de la junta d'avaluació 2: full de signatures"),
+    pages
+  };
+}
+
+function buildGroupAgreementsPdfModel_(context, payload) {
+  const storedGroupComment = Object.prototype.hasOwnProperty.call(context, 'storedGroupComment')
+    ? context.storedGroupComment
+    : readTutoriaGroupComment_(
+      context.gradesSpreadsheet,
+      context.evaluation.sheetName,
+      context.selectedGroup
+    );
+  const hasScreenValue = isEvaluationGradeEditable_(context.evaluation) &&
+    payload && typeof payload.groupComment === 'string' &&
+    normalizeGroupMatch_(payload.group) === normalizeGroupMatch_(context.selectedGroup);
+
+  return {
+    header: buildActaHeader_(context, "Acta de la junta d'avaluació 3: acords de junta"),
+    agreements: hasScreenValue
+      ? payload.groupComment
+      : String(storedGroupComment && storedGroupComment.groupComment || '')
+  };
+}
+
 function buildClosedGroupActaModel_(context) {
-  const sheet = getRequiredSheet_(context.gradesSpreadsheet, context.evaluation.sheetName);
-  const config = readEvaluationConfig_(context.gradesSpreadsheet, context.evaluation.sheetName);
-  const table = readEvaluationTable_(sheet);
+  const config = context.evaluationConfig || readEvaluationConfig_(
+    context.gradesSpreadsheet,
+    context.evaluation.sheetName
+  );
+  const table = context.evaluationTable || readEvaluationTable_(
+    getRequiredSheet_(context.gradesSpreadsheet, context.evaluation.sheetName)
+  );
   const evalRows = table.rows.filter(row => rowIncludesGroup_(row, context.selectedGroup));
   const students = context.closedRows.slice().sort((a, b) => compareText_(a.studentFullName, b.studentFullName));
   const subjectOrder = buildClosedCsvSubjectOrder_(evalRows, students);
@@ -1236,6 +1615,7 @@ function buildEvaluationRow_(headers, row, sheetRow) {
   const conceptColumns = getConceptColumnsFromHeaders_(headers);
   const headerIndexes = {
     tutoringGroup: indexes.get(normalizeHeader_(TUTORING_GROUP_HEADER)),
+    teacherFullName: indexes.get(normalizeHeader_('teacher_full_name')),
     subjectFullName: indexes.get(normalizeHeader_('subject_full_name')),
     studentFullName: indexes.get(normalizeHeader_('student_full_name')),
     studentAccountId: indexes.get(normalizeHeader_(STUDENT_ACCOUNT_ID_HEADER)),
@@ -1248,6 +1628,9 @@ function buildEvaluationRow_(headers, row, sheetRow) {
     sheetRow,
     tutoringGroup: String(row[headerIndexes.tutoringGroup] || '').trim(),
     tutoringGroups: splitCommaValues_(row[headerIndexes.tutoringGroup]),
+    teacherFullName: headerIndexes.teacherFullName === undefined
+      ? ''
+      : String(row[headerIndexes.teacherFullName] || '').trim(),
     subjectFullName: String(row[headerIndexes.subjectFullName] || '').trim(),
     subjectOrder: headerIndexes.subjectOrder === undefined ? '' : sanitizeOrder_(row[headerIndexes.subjectOrder]),
     studentFullName: String(row[headerIndexes.studentFullName] || '').trim(),
@@ -1303,7 +1686,59 @@ function readTutoriaCommentsForGroup_(gradesSpreadsheet, evaluationSheetName, se
   return { byStudentAccountId, byStudentName };
 }
 
-function readTutoriaRowsForGroup_(gradesSpreadsheet, evaluationSheetName, selectedGroup) {
+function readTutoriaGroupComment_(gradesSpreadsheet, evaluationSheetName, selectedGroup) {
+  const sheetName = `${evaluationSheetName}${TUTORIA_GROUPS_SHEET_SUFFIX}`;
+  const sheet = gradesSpreadsheet.getSheetByName(sheetName);
+  if (!sheet) return null;
+
+  const values = sheet.getDataRange().getValues();
+  if (!values.length) throw new Error(`El full ${sheet.getName()} està buit.`);
+
+  const headers = values[0].map(header => String(header || '').trim());
+  const indexes = getTutoriaGroupColumnIndexes_(headers);
+  const normalizedSelectedGroup = normalizeGroupMatch_(selectedGroup);
+
+  for (let offset = 1; offset < values.length; offset += 1) {
+    const row = values[offset];
+    if (normalizeGroupMatch_(row[indexes.tutoringGroup]) !== normalizedSelectedGroup) continue;
+
+    return {
+      sheetRow: offset + 1,
+      group: String(row[indexes.tutoringGroup] || '').trim(),
+      groupComment: String(row[indexes.groupComment] || ''),
+      updatedAt: formatClientTimestamp_(row[indexes.updatedAt]),
+      updatedBy: String(row[indexes.updatedBy] || '').trim()
+    };
+  }
+
+  throw new Error(`No s'ha trobat el grup ${selectedGroup} al full ${sheet.getName()}.`);
+}
+
+function readAllTutoriaGroupComments_(gradesSpreadsheet, evaluationSheetName) {
+  const sheet = gradesSpreadsheet.getSheetByName(`${evaluationSheetName}${TUTORIA_GROUPS_SHEET_SUFFIX}`);
+  const comments = new Map();
+  if (!sheet) return comments;
+
+  const values = sheet.getDataRange().getValues();
+  if (!values.length) return comments;
+
+  const headers = values[0].map(header => String(header || '').trim());
+  const indexes = getTutoriaGroupColumnIndexes_(headers);
+  values.slice(1).forEach((row, offset) => {
+    const group = String(row[indexes.tutoringGroup] || '').trim();
+    if (!group) return;
+    comments.set(normalizeGroupMatch_(group), {
+      sheetRow: offset + 2,
+      group,
+      groupComment: String(row[indexes.groupComment] || ''),
+      updatedAt: formatClientTimestamp_(row[indexes.updatedAt]),
+      updatedBy: String(row[indexes.updatedBy] || '').trim()
+    });
+  });
+  return comments;
+}
+
+function readAllTutoriaRows_(gradesSpreadsheet, evaluationSheetName) {
   const sheet = getRequiredSheet_(gradesSpreadsheet, `${evaluationSheetName}${TUTORIA_SHEET_SUFFIX}`);
   const values = sheet.getDataRange().getValues();
   if (values.length < 2) return [];
@@ -1312,7 +1747,12 @@ function readTutoriaRowsForGroup_(gradesSpreadsheet, evaluationSheetName, select
   const indexes = getTutoriaColumnIndexes_(headers);
   return values.slice(1)
     .map((row, offset) => buildTutoriaRow_(row, indexes, offset + 2))
-    .filter(row => row && rowIncludesGroup_(row, selectedGroup))
+    .filter(Boolean);
+}
+
+function readTutoriaRowsForGroup_(gradesSpreadsheet, evaluationSheetName, selectedGroup) {
+  return readAllTutoriaRows_(gradesSpreadsheet, evaluationSheetName)
+    .filter(row => rowIncludesGroup_(row, selectedGroup))
     .sort((a, b) => compareText_(a.studentFullName, b.studentFullName));
 }
 
@@ -1328,6 +1768,7 @@ function buildTutoriaRow_(row, indexes, sheetRow) {
     tutoringGroup: String(row[indexes.tutoringGroup] || '').trim(),
     tutoringGroups: splitCommaValues_(row[indexes.tutoringGroup]),
     studentAccountId: String(row[indexes.studentAccountId] || '').trim(),
+    subjectOrder: getOptionalRowValue_(row, indexes.subjectOrder),
     tutorComment: String(row[indexes.tutorComment] || ''),
     bulletinUrl: getOptionalRowValue_(row, indexes.bulletinUrl),
     email1: getOptionalRowValue_(row, indexes.email1),
@@ -1354,6 +1795,70 @@ function saveTutoriaComment_(gradesSpreadsheet, evaluationSheetName, selectedGro
     studentAccountId,
     studentFullName: selectedStudent,
     tutorComment
+  };
+}
+
+function saveTutoriaGroupComment_(gradesSpreadsheet, evaluationSheetName, selectedGroup, groupComment, updatedBy) {
+  const sheet = getRequiredSheet_(gradesSpreadsheet, `${evaluationSheetName}${TUTORIA_GROUPS_SHEET_SUFFIX}`);
+  const values = sheet.getDataRange().getValues();
+  if (!values.length) throw new Error(`El full ${sheet.getName()} està buit.`);
+
+  const headers = values[0].map(header => String(header || '').trim());
+  const indexes = getTutoriaGroupColumnIndexes_(headers);
+  const normalizedSelectedGroup = normalizeGroupMatch_(selectedGroup);
+  let sheetRow = 0;
+
+  for (let offset = 1; offset < values.length; offset += 1) {
+    if (normalizeGroupMatch_(values[offset][indexes.tutoringGroup]) === normalizedSelectedGroup) {
+      sheetRow = offset + 1;
+      break;
+    }
+  }
+
+  if (!sheetRow) {
+    throw new Error(`No s'ha trobat el grup ${selectedGroup} al full ${sheet.getName()}.`);
+  }
+
+  const updatedAt = new Date();
+  sheet.getRange(sheetRow, indexes.groupComment + 1, 1, 3)
+    .setValues([[groupComment, updatedAt, updatedBy]]);
+
+  return {
+    sheetRow,
+    group: selectedGroup,
+    groupComment,
+    updatedAt: formatClientTimestamp_(updatedAt),
+    updatedBy
+  };
+}
+
+function formatClientTimestamp_(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return Utilities.formatDate(value, TIMEZONE, 'yyyy-MM-dd HH:mm:ss');
+  }
+  return String(value || '').trim();
+}
+
+function getTutoriaGroupColumnIndexes_(headers) {
+  const indexes = buildHeaderIndexMap_(headers);
+  const requiredHeaders = [
+    TUTORING_GROUP_HEADER,
+    GROUP_COMMENT_HEADER,
+    UPDATED_AT_HEADER,
+    UPDATED_BY_HEADER
+  ];
+
+  requiredHeaders.forEach(header => {
+    if (!indexes.has(normalizeHeader_(header))) {
+      throw new Error(`Falta la columna obligatòria al full de comentaris de grup: ${header}`);
+    }
+  });
+
+  return {
+    tutoringGroup: indexes.get(normalizeHeader_(TUTORING_GROUP_HEADER)),
+    groupComment: indexes.get(normalizeHeader_(GROUP_COMMENT_HEADER)),
+    updatedAt: indexes.get(normalizeHeader_(UPDATED_AT_HEADER)),
+    updatedBy: indexes.get(normalizeHeader_(UPDATED_BY_HEADER))
   };
 }
 
@@ -1388,6 +1893,7 @@ function getTutoriaColumnIndexes_(headers) {
     tutoringGroup: indexes.get(normalizeHeader_(TUTORING_GROUP_HEADER)),
     studentFullName: indexes.get(normalizeHeader_('student_full_name')),
     studentAccountId: indexes.get(normalizeHeader_(STUDENT_ACCOUNT_ID_HEADER)),
+    subjectOrder: indexes.get(normalizeHeader_(SUBJECT_ORDER_HEADER)),
     tutorComment: indexes.get(normalizeHeader_(TUTOR_COMMENT_HEADER)),
     bulletinUrl: indexes.get(normalizeHeader_('Butlletí_url')),
     email1: indexes.get(normalizeHeader_('email_1')),
@@ -1564,17 +2070,34 @@ function rowIncludesGroup_(row, groupName) {
 
 function resolveUserVisibilityContext_() {
   const userEmail = normalizeEmail_(getActiveUserEmail_());
+  const propertyAdmin = isAdminEmailFromScriptProperty_(userEmail);
   const teachersSpreadsheet = openLogicalTableSpreadsheet_(TEACHERS_TABLE_NAME);
   const teachersSheet = getRequiredSheet_(teachersSpreadsheet, TEACHERS_SHEET_NAME);
   const teachers = readRowsByHeader_(teachersSheet);
   const actingTeacher = findTeacherByInstitutionalEmail_(teachers, userEmail);
-  if (!actingTeacher) throw new Error('No s\'ha trobat cap tutoria associada al teu correu.');
+  if (!actingTeacher) {
+    if (propertyAdmin) {
+      return {
+        actingTeacher: null,
+        effectiveTeacher: null,
+        isSubstituteActing: false,
+        responsibilities: [],
+        isAdmin: true,
+        visibleGroups: buildVisibleGroups_(readAllDinantiaGroupNames_())
+      };
+    }
+
+    throw new Error('No s\'ha trobat cap tutoria associada al teu correu.');
+  }
 
   const substitution = resolveEffectiveTeacher_(teachersSpreadsheet, teachers, actingTeacher);
   const effectiveTeacher = substitution.effectiveTeacher;
   const responsibilities = readTeacherResponsibilities_(effectiveTeacher.fullName);
   const privileges = readDinantiaPrivilegesForResponsibilities_(responsibilities);
-  const visibleGroups = buildVisibleGroups_(privileges.groupNames);
+  const groupNames = propertyAdmin
+    ? uniqueInOrder_(privileges.groupNames.concat(readAllDinantiaGroupNames_()))
+    : privileges.groupNames;
+  const visibleGroups = buildVisibleGroups_(groupNames);
   if (!visibleGroups.length) throw new Error('No s\'ha trobat cap tutoria associada al teu correu.');
 
   return {
@@ -1582,7 +2105,7 @@ function resolveUserVisibilityContext_() {
     effectiveTeacher,
     isSubstituteActing: substitution.isSubstituteActing,
     responsibilities,
-    isAdmin: privileges.isAdmin,
+    isAdmin: privileges.isAdmin || propertyAdmin,
     visibleGroups
   };
 }
@@ -1660,7 +2183,7 @@ function readDinantiaPrivilegesForResponsibilities_(responsibilities) {
     const carrec = String(getField_(row, 'carrec') || '').trim();
     if (!responsibilitySet.has(normalizeText_(carrec))) return;
     splitCommaValues_(getField_(row, 'dinantia_group_names')).forEach(item => {
-      if (item === ADMIN_PRIVILEGES_MARKER) {
+      if (normalizeText_(item) === ADMIN_PRIVILEGES_MARKER) {
         isAdmin = true;
       } else {
         groupNames.push(item);
@@ -1669,6 +2192,31 @@ function readDinantiaPrivilegesForResponsibilities_(responsibilities) {
   });
 
   return { isAdmin, groupNames: uniqueInOrder_(groupNames) };
+}
+
+function readAllDinantiaGroupNames_() {
+  const spreadsheet = openLogicalTableSpreadsheet_(DINANTIA_TABLE_NAME);
+  const sheet = getRequiredSheet_(spreadsheet, TEACHERS_TO_DINANTIA_SHEET_NAME);
+  const groupNames = [];
+
+  readRowsByHeader_(sheet).forEach(row => {
+    splitCommaValues_(getField_(row, 'dinantia_group_names')).forEach(item => {
+      if (normalizeText_(item) !== ADMIN_PRIVILEGES_MARKER) groupNames.push(item);
+    });
+  });
+
+  return uniqueInOrder_(groupNames);
+}
+
+function isAdminEmailFromScriptProperty_(email) {
+  const targetEmail = normalizeEmail_(email);
+  if (!targetEmail) return false;
+
+  return splitCommaValues_(PropertiesService.getScriptProperties()
+    .getProperty(ADMIN_PRIVILEGES_PROPERTY))
+    .map(normalizeEmail_)
+    .filter(Boolean)
+    .includes(targetEmail);
 }
 
 function buildVisibleGroups_(groupNames) {
@@ -1681,6 +2229,8 @@ function assertAllowedGroup_(groupName, visibleGroups) {
 }
 
 function publicTeacher_(teacher) {
+  if (!teacher) return null;
+
   return {
     fullName: teacher.fullName,
     email: teacher.email,

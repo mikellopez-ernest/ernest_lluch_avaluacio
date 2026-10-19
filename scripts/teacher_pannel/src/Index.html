@@ -33,6 +33,14 @@
         letter-spacing: 0;
       }
 
+      .admin-note {
+        margin-left: 8px;
+        color: #137333;
+        font-size: 13px;
+        font-weight: 700;
+        vertical-align: middle;
+      }
+
       h2 {
         margin: 24px 0 14px;
         font-size: 20px;
@@ -236,7 +244,7 @@
   </head>
   <body class="busy">
     <main>
-      <h1>Avaluació</h1>
+      <h1>Avaluació <span id="admin-note" class="admin-note" hidden>Admin</span></h1>
       <div id="status" class="status"></div>
 
       <section id="toolbar" class="toolbar" hidden>
@@ -281,6 +289,7 @@
         evaluations: [],
         selectedEvaluation: '',
         evaluationData: null,
+        isAdmin: false,
         dirtyRows: new Map()
       };
 
@@ -295,6 +304,8 @@
         google.script.run
           .withSuccessHandler(data => {
             state.evaluations = data.evaluations || [];
+            state.isAdmin = data.isAdmin === true;
+            document.getElementById('admin-note').hidden = !state.isAdmin;
             renderEvaluationSelector();
             document.getElementById('toolbar').hidden = false;
             setBusy(false);
@@ -348,6 +359,8 @@
         google.script.run
           .withSuccessHandler(data => {
             state.evaluationData = data;
+            state.isAdmin = data.isAdmin === true;
+            document.getElementById('admin-note').hidden = !state.isAdmin;
             state.dirtyRows = new Map();
             renderGroupSelector();
             setBusy(false);

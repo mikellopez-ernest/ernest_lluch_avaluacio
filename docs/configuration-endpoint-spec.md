@@ -28,7 +28,7 @@ Only these functions may be public:
 | `buildSubjectsCache` | Full rebuild of `Grades` -> `subjects_cache`. |
 | `getConfigurationData` | Frontend data loader. |
 | `saveSubjectsCacheEdits` | Saves dirty/new/deleted cache rows. |
-| `createEvaluation` | Creates the registry row, config sheet, main evaluation sheet, tutoria sheet, and generated student rows. |
+| `createEvaluation` | Creates the registry row, config sheet, main evaluation sheet, per-student tutoria sheet, tutorial-group comment sheet, and generated rows. |
 | `getEvaluationCreationStatus` | Polling endpoint for long evaluation creation progress. |
 
 All other functions must be private helpers with a trailing `_`.
@@ -260,12 +260,17 @@ When the user confirms:
 3. Create the main sheet `{sheet_name}` in `Grades`.
 4. Create `{sheet_name}_config`.
 5. Create `{sheet_name}_tutoria`.
-6. Append `Grades` -> `avaluacions` with `Estat = Creada`.
-7. Write the config sheet, including subject-evaluation reduced labels and colors.
-8. Populate the main sheet and tutoria sheet from `subjects_cache`.
+6. Create `{sheet_name}_tutoria_grups`.
+7. Append `Grades` -> `avaluacions` with `Estat = Creada`.
+8. Write the config sheet, including subject-evaluation reduced labels and colors.
+9. Populate the main sheet and tutoria sheet from `subjects_cache`.
+10. Derive distinct tutorial groups from the final generated `grup_tutoria` values.
+11. Populate `{sheet_name}_tutoria_grups` with one row per tutorial group.
 
-If `{sheet_name}`, `{sheet_name}_config`, or `{sheet_name}_tutoria` already
-exists, fail clearly and do not overwrite existing data.
+Before inserting any sheet, check `{sheet_name}`, `{sheet_name}_config`,
+`{sheet_name}_tutoria`, and `{sheet_name}_tutoria_grups`. If any one already
+exists, fail clearly with `Ja existeix el full: {name}` and do not overwrite
+existing data or insert any of the four new sheets.
 
 The popup closes once creation starts. The busy overlay stays visible and polls
 `getEvaluationCreationStatus(runId)` until complete or error.
@@ -314,6 +319,23 @@ generation rule.
 | J | `Comentari_tutor` | Blank at creation time. |
 | K | `Butlletí_url` | Blank at creation time. |
 
+`{sheet_name}_tutoria_grups` columns:
+
+| Column | Header | Source / Behavior |
+| --- | --- | --- |
+| A | `grup_tutoria` | Distinct, trimmed, nonblank final value from `{sheet_name}_tutoria.grup_tutoria`, preserving first-seen order. |
+| B | `Comentari_grup` | Shared comment for the whole tutorial group. Blank at creation time. |
+| C | `updated_at` | Last modification datetime. Blank at creation time. |
+| D | `updated_by` | Email of the last modifying user. Blank at creation time. |
+
+The group-comment sheet is derived only after
+`fillTutoriaGroupsFromTutoriaRows_` has assigned the final `grup_tutoria`
+values. It must not be built from `selectedGroups`, because local selected group
+codes and final tutorial-group display values are not guaranteed to match.
+Duplicate and blank tutorial groups are ignored. A shared `Comentari_grup` is
+stored once in this sheet and must not be duplicated into each student's
+`Comentari_tutor` field.
+
 ### Progress Logging
 
 Each run uses a per-run ID. Log and publish progress for:
@@ -326,17 +348,23 @@ properties. The configuration data loader deletes legacy
 | --- | --- |
 | start | Received payload summary. |
 | lock | Script lock waiting/acquired. |
-| normalized names | Main, config, and tutoria sheet names. |
+| normalized names | Main, config, tutoria, and tutoria-group sheet names. |
 | inserting sheets | New sheets are being created. |
 | registering evaluation | Registry row is being written. |
 | writing config | Config sheet is being written. |
-| populating main sheet | Student expansion for main and tutoria sheets has started. |
+| populating main sheet | Student expansion for main, tutoria, and tutoria-group sheets has started. |
 | cache loaded | Cache rows and Dinantia group count. |
 | accounts loaded | Dinantia accounts read. |
 | student index built | Matched groups and indexed student rows. |
-| writing main | Generated main and tutoria rows being written. |
-| complete | Main and tutoria sheet rows written. |
+| writing main | Generated main, tutoria, and tutorial-group counts are known; main and tutoria rows are being written. |
+| writing tutoria groups | Distinct final `grup_tutoria` rows are being written to `{sheet_name}_tutoria_grups`. |
+| complete | Main, tutoria, and tutoria-group rows written. |
 | release | Script lock released. |
+
+The `createEvaluation` result and final progress metadata include
+`sheetName`, `configSheetName`, `tutoriaSheetName`,
+`tutoriaGrupsSheetName`, `rowsWritten`, `tutoriaRowsWritten`, and
+`tutoriaGroupRowsWritten`.
 
 ## Manual Authorization
 

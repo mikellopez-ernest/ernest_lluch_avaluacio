@@ -35,6 +35,14 @@ Deploy as a web app.
 
 The script also checks the active user's email domain and rejects users outside `@iernestlluch.cat`.
 
+The optional `admin_privileges` script property contains a comma-separated
+list of administrator emails. Matching is trimmed and case-insensitive. A
+matching in-domain administrator can read every evaluation row, build selectors
+from all groups and subjects, and save any row while the evaluation remains in
+`Avaluació professors`. Normal users remain restricted to rows whose
+`teacher_email` matches their active account. The backend re-checks the
+property during every save; the UI is not the authorization boundary.
+
 Local `.clasp.json` files are intentionally ignored by git. The script folder
 must keep a local `.clasp.json` pointing to the correct Apps Script project so
 `clasp push` and `clasp deploy` target the right script.
@@ -119,7 +127,7 @@ The teacher panel uses `group_name`, not `group`, to build the visible `Grup` se
 
 The endpoint identifies writable rows by their original spreadsheet row number, `sheetRow`. It must never use student name, group, subject, selected group, or visible row order as the write identity.
 
-Teacher-specific views match the active user's email against `teacher_email`. Email matching is trimmed and case-insensitive.
+Teacher-specific views match the active user's email against `teacher_email`. Email matching is trimmed and case-insensitive. Property-based administrators bypass this row filter and receive every row in the selected active evaluation.
 
 If the active teacher email does not appear in the selected evaluation sheet, show:
 

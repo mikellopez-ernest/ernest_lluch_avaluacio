@@ -248,13 +248,15 @@ function createEvaluation(payload) {
     const sheetName = normalizeSheetName_(evaluationName);
     const configSheetName = `${sheetName}_config`;
     const tutoriaSheetName = `${sheetName}_tutoria`;
+    const tutoriaGrupsSheetName = `${sheetName}_tutoria_grups`;
 
-    Logger.log('%s normalized sheetName="%s" configSheetName="%s" tutoriaSheetName="%s"', logPrefix, sheetName, configSheetName, tutoriaSheetName);
-    updateEvaluationProgress_(runId, 'running', `Creant els fulls ${sheetName}, ${configSheetName} i ${tutoriaSheetName}...`, {
+    Logger.log('%s normalized sheetName="%s" configSheetName="%s" tutoriaSheetName="%s" tutoriaGrupsSheetName="%s"', logPrefix, sheetName, configSheetName, tutoriaSheetName, tutoriaGrupsSheetName);
+    updateEvaluationProgress_(runId, 'running', `Creant els fulls ${sheetName}, ${configSheetName}, ${tutoriaSheetName} i ${tutoriaGrupsSheetName}...`, {
       stage: 'normalized_names',
       sheetName,
       configSheetName,
-      tutoriaSheetName
+      tutoriaSheetName,
+      tutoriaGrupsSheetName
     });
 
     if (gradesSpreadsheet.getSheetByName(sheetName)) {
@@ -272,10 +274,16 @@ function createEvaluation(payload) {
       throw new Error(`Ja existeix el full: ${tutoriaSheetName}`);
     }
 
+    if (gradesSpreadsheet.getSheetByName(tutoriaGrupsSheetName)) {
+      Logger.log('%s failed tutoria groups sheet already exists "%s"', logPrefix, tutoriaGrupsSheetName);
+      throw new Error(`Ja existeix el full: ${tutoriaGrupsSheetName}`);
+    }
+
     Logger.log('%s inserting sheets', logPrefix);
     const mainSheet = gradesSpreadsheet.insertSheet(sheetName);
     const configSheet = gradesSpreadsheet.insertSheet(configSheetName);
     const tutoriaSheet = gradesSpreadsheet.insertSheet(tutoriaSheetName);
+    const tutoriaGrupsSheet = gradesSpreadsheet.insertSheet(tutoriaGrupsSheetName);
 
     Logger.log('%s registering evaluation', logPrefix);
     updateEvaluationProgress_(runId, 'running', "Registrant l'avaluació...", { stage: 'registering' });
@@ -283,17 +291,19 @@ function createEvaluation(payload) {
     Logger.log('%s writing config', logPrefix);
     updateEvaluationProgress_(runId, 'running', 'Escrivint la configuració...', { stage: 'writing_config' });
     writeEvaluationConfig_(configSheet, subjectItems, concepts);
-    Logger.log('%s populating main and tutoria sheets', logPrefix);
-    updateEvaluationProgress_(runId, 'running', 'Llegint alumnes de Dinantia i generant files...', { stage: 'populating_main' });
-    const result = populateEvaluationSheets_(mainSheet, tutoriaSheet, subjectValues, concepts, logPrefix, runId, selectedGroups);
-    Logger.log('%s completed rowsWritten=%s tutoriaRowsWritten=%s', logPrefix, result.mainRowsWritten, result.tutoriaRowsWritten);
-    updateEvaluationProgress_(runId, 'complete', `Avaluació creada: ${sheetName} (${result.mainRowsWritten} files, ${result.tutoriaRowsWritten} tutoria).`, {
+    Logger.log('%s populating main, tutoria and tutoria groups sheets', logPrefix);
+    updateEvaluationProgress_(runId, 'running', 'Llegint alumnes de Dinantia i generant files principals, de tutoria i de grups de tutoria...', { stage: 'populating_main' });
+    const result = populateEvaluationSheets_(mainSheet, tutoriaSheet, tutoriaGrupsSheet, subjectValues, concepts, logPrefix, runId, selectedGroups);
+    Logger.log('%s completed rowsWritten=%s tutoriaRowsWritten=%s tutoriaGroupRowsWritten=%s', logPrefix, result.mainRowsWritten, result.tutoriaRowsWritten, result.tutoriaGroupRowsWritten);
+    updateEvaluationProgress_(runId, 'complete', `Avaluació creada: ${sheetName} (${result.mainRowsWritten} files, ${result.tutoriaRowsWritten} tutoria, ${result.tutoriaGroupRowsWritten} grups de tutoria).`, {
       stage: 'complete',
       sheetName,
       configSheetName,
       tutoriaSheetName,
+      tutoriaGrupsSheetName,
       rowsWritten: result.mainRowsWritten,
-      tutoriaRowsWritten: result.tutoriaRowsWritten
+      tutoriaRowsWritten: result.tutoriaRowsWritten,
+      tutoriaGroupRowsWritten: result.tutoriaGroupRowsWritten
     });
 
     return {
@@ -302,8 +312,10 @@ function createEvaluation(payload) {
       sheetName,
       configSheetName,
       tutoriaSheetName,
+      tutoriaGrupsSheetName,
       rowsWritten: result.mainRowsWritten,
       tutoriaRowsWritten: result.tutoriaRowsWritten,
+      tutoriaGroupRowsWritten: result.tutoriaGroupRowsWritten,
       status: 'evaluation created.'
     };
   } catch (error) {
@@ -672,7 +684,7 @@ function writeEvaluationConfig_(sheet, subjectItems, concepts) {
   formatEvaluationConfigSheet_(sheet, headers.length);
 }
 
-function populateEvaluationSheets_(mainSheet, tutoriaSheet, subjectValues, concepts, logPrefix, runId, selectedGroups) {
+function populateEvaluationSheets_(mainSheet, tutoriaSheet, tutoriaGrupsSheet, subjectValues, concepts, logPrefix, runId, selectedGroups) {
   const selectedGroupSet = new Set((selectedGroups || []).map(group => normalizeCode_(group)));
   const cacheRows = readSubjectsCacheRows_()
     .filter(row => splitGroupCodes_(row.group).some(groupCode => selectedGroupSet.has(normalizeCode_(groupCode))));
@@ -757,14 +769,16 @@ function populateEvaluationSheets_(mainSheet, tutoriaSheet, subjectValues, conce
 
   fillTutoriaGroupsFromTutoriaRows_(mainRows, mainHeaders, tutoriaRows, tutoriaHeaders);
   fillTutoriaGroupsFromTutoriaRows_(tutoriaRows, tutoriaHeaders, tutoriaRows, tutoriaHeaders);
+  const tutoriaGroupRows = buildTutoriaGroupRows_(tutoriaRows, tutoriaHeaders);
   const mainValues = [mainHeaders].concat(mainRows);
   const tutoriaValues = [tutoriaHeaders].concat(tutoriaRows);
 
-  Logger.log('%s populate generatedRows=%s tutoriaRows=%s', logPrefix, mainRows.length, tutoriaRows.length);
-  updateEvaluationProgress_(runId, 'running', `Escrivint ${mainRows.length} files al full principal i ${tutoriaRows.length} files de tutoria...`, {
+  Logger.log('%s populate generatedRows=%s tutoriaRows=%s tutoriaGroupRows=%s', logPrefix, mainRows.length, tutoriaRows.length, tutoriaGroupRows.length);
+  updateEvaluationProgress_(runId, 'running', `Escrivint ${mainRows.length} files al full principal, ${tutoriaRows.length} files de tutoria i ${tutoriaGroupRows.length} grups de tutoria...`, {
     stage: 'writing_main',
     generatedRows: mainRows.length,
-    tutoriaRows: tutoriaRows.length
+    tutoriaRows: tutoriaRows.length,
+    tutoriaGroupRows: tutoriaGroupRows.length
   });
 
   mainSheet.clearContents();
@@ -779,10 +793,46 @@ function populateEvaluationSheets_(mainSheet, tutoriaSheet, subjectValues, conce
   tutoriaSheet.getRange(1, 1, tutoriaValues.length, tutoriaHeaders.length).setValues(tutoriaValues);
   formatTutoriaSheet_(tutoriaSheet, tutoriaHeaders.length, tutoriaValues.length);
 
+  updateEvaluationProgress_(runId, 'running', `Escrivint ${tutoriaGroupRows.length} grups al full de comentaris de tutoria...`, {
+    stage: 'writing_tutoria_groups',
+    tutoriaGroupRows: tutoriaGroupRows.length
+  });
+  writeTutoriaGroupsSheet_(tutoriaGrupsSheet, tutoriaGroupRows);
+
   return {
     mainRowsWritten: mainRows.length,
-    tutoriaRowsWritten: tutoriaRows.length
+    tutoriaRowsWritten: tutoriaRows.length,
+    tutoriaGroupRowsWritten: tutoriaGroupRows.length
   };
+}
+
+function buildTutoriaGroupRows_(tutoriaRows, tutoriaHeaders) {
+  const grupTutoriaIndex = tutoriaHeaders.indexOf('grup_tutoria');
+  if (grupTutoriaIndex === -1) {
+    throw new Error("No s'ha trobat la columna obligatòria grup_tutoria al full de tutoria.");
+  }
+
+  const seen = new Set();
+  const groupRows = [];
+
+  (tutoriaRows || []).forEach(row => {
+    const grupTutoria = String(row[grupTutoriaIndex] || '').trim();
+    if (!grupTutoria || seen.has(grupTutoria)) return;
+
+    seen.add(grupTutoria);
+    groupRows.push([grupTutoria, '', '', '']);
+  });
+
+  return groupRows;
+}
+
+function writeTutoriaGroupsSheet_(sheet, groupRows) {
+  const headers = ['grup_tutoria', 'Comentari_grup', 'updated_at', 'updated_by'];
+  const values = [headers].concat(groupRows || []);
+
+  sheet.clearContents();
+  sheet.getRange(1, 1, values.length, headers.length).setValues(values);
+  formatTutoriaGroupsSheet_(sheet, headers.length, values.length);
 }
 
 function formatEvaluationConfigSheet_(sheet, columnCount) {
@@ -845,6 +895,22 @@ function formatTutoriaSheet_(sheet, columnCount, rowCount) {
   if (columnCount >= 9) {
     sheet.hideColumns(9);
   }
+}
+
+function formatTutoriaGroupsSheet_(sheet, columnCount, rowCount) {
+  sheet.setFrozenRows(1);
+  sheet.getRange(1, 1, 1, columnCount)
+    .setFontWeight('bold')
+    .setBackground('#e8f0fe')
+    .setFontColor('#202124');
+  sheet.getRange(1, 1, rowCount, columnCount)
+    .setVerticalAlignment('middle')
+    .setWrap(true);
+  sheet.autoResizeColumns(1, columnCount);
+  sheet.setColumnWidth(1, 180);
+  sheet.setColumnWidth(2, 480);
+  sheet.setColumnWidth(3, 170);
+  sheet.setColumnWidth(4, 240);
 }
 
 function applyEvaluationValidations_(sheet, dataRowCount, subjectValues, concepts) {
