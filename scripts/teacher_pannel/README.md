@@ -10,6 +10,17 @@ sheet contracts are specified in
 ## Apps Script
 
 - Script ID: stored only in the local ignored `.clasp.json`; do not commit it.
+- Deployment type: web app, executed as the owner and restricted to users in
+  `iernestlluch.cat`.
+
+## Private Script Properties
+
+- `db`: shared database-registry spreadsheet ID
+- `admin_privileges`: optional comma-separated administrator emails for this
+  Apps Script project
+
+These properties are project-local and must not be committed. This endpoint
+does not read the responsibility-derived `ADMIN_PRIVILEGES` marker.
 
 ## Endpoint
 
@@ -128,7 +139,10 @@ This forces Google to show the authorization prompt before users open the endpoi
 ```sh
 clasp pull
 clasp push
-clasp deploy --description "teacher_pannel web app"
+clasp deployments
+clasp deploy --deploymentId <existing-deployment-id> --description "teacher_pannel web app"
 ```
 
-The local `.clasp.json` file is intentionally ignored by git, matching the repository's existing clasp-secret policy.
+Use the existing deployment ID for routine releases so the web-app URL remains
+unchanged. Do not commit that ID. The local `.clasp.json` file is intentionally
+ignored by git, matching the repository's existing clasp-secret policy.

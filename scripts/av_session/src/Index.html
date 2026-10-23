@@ -214,6 +214,28 @@
         text-decoration: underline;
       }
 
+      .table-link-button {
+        border: 0;
+        padding: 0;
+        background: transparent;
+        color: #0b57d0;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .table-link-button:hover {
+        text-decoration: underline;
+      }
+
+      .closed-pdf-actions {
+        display: grid;
+        gap: 4px;
+        justify-items: center;
+        margin-top: 4px;
+        white-space: nowrap;
+      }
+
       tr.dirty td {
         background: #fff6c7;
       }
@@ -239,6 +261,88 @@
       .tutor-comment,
       .group-comment {
         margin-top: 8px;
+      }
+
+      .job-panel {
+        margin-top: 12px;
+        border-top: 1px solid #d8dee8;
+        padding-top: 10px;
+      }
+
+      .job-panel[hidden] {
+        display: none;
+      }
+
+      .job-panel-header,
+      .job-summary,
+      .job-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      .job-panel-header {
+        justify-content: space-between;
+        margin-bottom: 6px;
+      }
+
+      .job-panel h2 {
+        font-size: 14px;
+      }
+
+      .test-mode-note {
+        border: 1px solid #f2c94c;
+        border-radius: 6px;
+        padding: 4px 7px;
+        background: #fff8dc;
+        color: #684e00;
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .job-row {
+        display: grid;
+        grid-template-columns: minmax(180px, 1fr) minmax(180px, 2fr) auto;
+        gap: 10px;
+        align-items: center;
+        border-bottom: 1px solid #e4e8ef;
+        padding: 8px 0;
+        font-size: 11px;
+      }
+
+      .job-name {
+        font-weight: 700;
+      }
+
+      .job-detail {
+        color: #5f6368;
+        line-height: 1.35;
+      }
+
+      .job-progress {
+        width: 100%;
+        height: 8px;
+        margin-top: 4px;
+      }
+
+      .job-actions button {
+        border: 1px solid #c7cdd6;
+        border-radius: 6px;
+        padding: 5px 8px;
+        background: #fff;
+        color: #0b57d0;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .batch-scope-menu {
+        position: fixed;
+        right: 24px;
+        bottom: 94px;
+        z-index: 8;
+        width: 180px;
       }
 
       .bubble-actions {
@@ -353,6 +457,86 @@
         display: none;
       }
 
+      .contact-dialog {
+        position: fixed;
+        inset: 0;
+        z-index: 12;
+        display: grid;
+        place-items: center;
+        padding: 20px;
+        background: rgba(32, 33, 36, 0.36);
+      }
+
+      .contact-dialog[hidden] {
+        display: none;
+      }
+
+      .contact-dialog-card {
+        width: min(430px, 100%);
+        border-radius: 8px;
+        background: #fff;
+        box-shadow: 0 12px 34px rgba(32, 33, 36, 0.28);
+        padding: 18px;
+      }
+
+      .contact-dialog-card h2 {
+        white-space: normal;
+      }
+
+      .contact-dialog-card p {
+        margin: 6px 0 12px;
+        color: #5f6368;
+        font-size: 12px;
+        line-height: 1.4;
+      }
+
+      .contact-options {
+        display: grid;
+        gap: 8px;
+      }
+
+      .contact-option {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        border: 1px solid #d8dee8;
+        border-radius: 6px;
+        padding: 8px;
+        color: #202124;
+        font-size: 12px;
+        font-weight: 400;
+      }
+
+      .contact-option small {
+        display: block;
+        margin-top: 2px;
+        color: #5f6368;
+      }
+
+      .contact-dialog-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 16px;
+      }
+
+      .contact-dialog-actions button {
+        border: 1px solid #c7cdd6;
+        border-radius: 6px;
+        padding: 7px 10px;
+        background: #fff;
+        color: #0b57d0;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .contact-dialog-actions button.primary {
+        border-color: #0b57d0;
+        background: #0b57d0;
+        color: #fff;
+      }
+
       .loader {
         display: grid;
         gap: 14px;
@@ -411,6 +595,10 @@
         .toolbar {
           grid-template-columns: 1fr;
         }
+
+        .job-row {
+          grid-template-columns: 1fr;
+        }
       }
     </style>
   </head>
@@ -462,6 +650,14 @@
           <textarea id="group-comment" rows="3"></textarea>
         </label>
       </section>
+
+      <section id="job-panel" class="job-panel" hidden>
+        <div class="job-panel-header">
+          <h2>Processos massius</h2>
+          <span id="batch-test-note" class="test-mode-note" hidden></span>
+        </div>
+        <div id="job-list"></div>
+      </section>
     </main>
 
     <div class="bubble-actions">
@@ -481,11 +677,6 @@
         </div>
         <button id="print-button" class="bubble-button" type="button" aria-label="Obrir opcions d'impressió" title="Imprimir" aria-haspopup="menu" aria-expanded="false" disabled>🖨️</button>
       </div>
-      <button id="csv-button" class="bubble-button" type="button" aria-label="Descarregar acta Excel" title="Descarregar acta Excel" hidden disabled>
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h8M8 9h2"/>
-        </svg>
-      </button>
       <button id="bulk-pdf-button" class="bubble-button" type="button" aria-label="Generar butlletins pendents" title="Generar butlletins pendents" hidden disabled>
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M9 15h6M12 12v6"/>
@@ -496,6 +687,24 @@
           <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 4h16v16H4zM22 6l-10 7L2 6"/>
         </svg>
       </button>
+    </div>
+
+    <div id="batch-scope-menu" class="print-menu batch-scope-menu" role="menu" hidden>
+      <div id="batch-scope-title" class="print-scope-title">Àmbit del procés</div>
+      <button id="batch-scope-current" type="button" role="menuitem">Aquest grup</button>
+      <button id="batch-scope-all" type="button" role="menuitem">Tots els grups</button>
+    </div>
+
+    <div id="contact-dialog" class="contact-dialog" role="dialog" aria-modal="true" aria-labelledby="contact-dialog-title" hidden>
+      <div class="contact-dialog-card">
+        <h2 id="contact-dialog-title">Tornar a enviar el butlletí</h2>
+        <p id="contact-dialog-description"></p>
+        <div id="contact-options" class="contact-options"></div>
+        <div class="contact-dialog-actions">
+          <button id="contact-dialog-cancel" type="button">Cancel·lar</button>
+          <button id="contact-dialog-send" class="primary" type="button">Enviar</button>
+        </div>
+      </div>
     </div>
 
     <div id="overlay" class="overlay">
@@ -519,7 +728,12 @@
         groupCommentDirty: false,
         lastGroupComment: '',
         isAdmin: false,
-        pendingPrintKind: ''
+        pendingPrintKind: '',
+        pendingBatchAction: '',
+        pendingContactRow: null,
+        batchPollTimer: null,
+        lastCompletedBatchJob: '',
+        hadActiveBatch: false
       };
 
       document.addEventListener('DOMContentLoaded', loadInitialData);
@@ -536,18 +750,28 @@
       document.getElementById('print-group-agreements').addEventListener('click', () => requestGroupPdf('agreements'));
       document.getElementById('print-scope-current').addEventListener('click', () => confirmPrintScope(false));
       document.getElementById('print-scope-all').addEventListener('click', () => confirmPrintScope(true));
-      document.getElementById('csv-button').addEventListener('click', downloadGroupXlsx);
-      document.getElementById('bulk-pdf-button').addEventListener('click', generateMissingClosedBulletins);
-      document.getElementById('bulk-mail-button').addEventListener('click', sendPendingClosedEmails);
+      document.getElementById('bulk-pdf-button').addEventListener('click', () => requestClosedBatchAction('generate'));
+      document.getElementById('bulk-mail-button').addEventListener('click', () => requestClosedBatchAction('send'));
+      document.getElementById('batch-scope-current').addEventListener('click', () => confirmClosedBatchScope('group'));
+      document.getElementById('batch-scope-all').addEventListener('click', () => confirmClosedBatchScope('all'));
       document.getElementById('prev-button').addEventListener('click', () => navigateSelection(-1));
       document.getElementById('next-button').addEventListener('click', () => navigateSelection(1));
       document.getElementById('tutor-comment').addEventListener('input', handleTutorCommentInput);
       document.getElementById('group-comment').addEventListener('input', handleGroupCommentInput);
+      document.getElementById('contact-dialog-cancel').addEventListener('click', closeContactDialog);
+      document.getElementById('contact-dialog-send').addEventListener('click', resendClosedBulletinToSelectedContacts);
       document.addEventListener('click', event => {
         if (!event.target.closest('.print-control')) closePrintMenu();
+        if (!event.target.closest('#batch-scope-menu') &&
+            !event.target.closest('#bulk-pdf-button') &&
+            !event.target.closest('#bulk-mail-button')) closeBatchScopeMenu();
       });
       document.addEventListener('keydown', event => {
-        if (event.key === 'Escape') closePrintMenu();
+        if (event.key === 'Escape') {
+          closePrintMenu();
+          closeBatchScopeMenu();
+          closeContactDialog();
+        }
       });
 
       function loadInitialData() {
@@ -609,6 +833,8 @@
 
       function handlePrimarySelectionChange() {
         closePrintMenu();
+        closeBatchScopeMenu();
+        stopBatchPolling();
         syncPrimarySelectionFromDom();
         state.evaluationData = null;
         state.rowsData = null;
@@ -618,6 +844,7 @@
         resetGroupComment();
         resetDetailSelectors();
         clearTable();
+        document.getElementById('job-panel').hidden = true;
 
         if (!state.selectedEvaluation || !state.selectedGroup) {
           setStatus('Selecciona una avaluació i un grup.');
@@ -710,6 +937,7 @@
         document.getElementById('tutor-comment-label').hidden = true;
         document.getElementById('group-comment-label').hidden = true;
         renderClosedTable();
+        if (state.isAdmin) refreshClosedBatchJobs();
       }
 
       function handleStudentChange() {
@@ -845,14 +1073,13 @@
         const bulletinCell = document.createElement('td');
         bulletinCell.className = 'action-cell';
         if (row.bulletinUrl) {
-          const link = document.createElement('a');
-          link.className = 'table-link';
-          link.href = row.bulletinUrl;
-          link.target = '_blank';
-          link.rel = 'noopener';
-          link.title = 'Obrir butlletí';
-          link.textContent = 'PDF';
-          bulletinCell.appendChild(link);
+          const button = document.createElement('button');
+          button.className = 'table-link-button';
+          button.type = 'button';
+          button.textContent = 'PDF';
+          button.title = 'Opcions del butlletí';
+          button.addEventListener('click', () => toggleClosedPdfActions(bulletinCell, row));
+          bulletinCell.appendChild(button);
         } else {
           const link = document.createElement('a');
           link.className = 'table-link';
@@ -869,8 +1096,14 @@
         const sentCell = document.createElement('td');
         sentCell.className = 'action-cell';
         if (row.sent) {
-          sentCell.textContent = '✓';
-          sentCell.title = 'Enviat';
+          const button = document.createElement('button');
+          button.className = 'table-link-button';
+          button.type = 'button';
+          button.textContent = '✓';
+          button.title = 'Veure o tornar a enviar als contactes';
+          button.setAttribute('aria-label', 'Veure o tornar a enviar als contactes');
+          button.addEventListener('click', () => openClosedBulletinContactDialog(row));
+          sentCell.appendChild(button);
         } else {
           const link = document.createElement('a');
           link.className = 'table-link';
@@ -885,6 +1118,38 @@
         tr.appendChild(sentCell);
 
         return tr;
+      }
+
+      function toggleClosedPdfActions(cell, row) {
+        const existing = cell.querySelector('.closed-pdf-actions');
+        if (existing) {
+          existing.remove();
+          return;
+        }
+
+        document.querySelectorAll('.closed-pdf-actions').forEach(actions => actions.remove());
+        const actions = document.createElement('div');
+        actions.className = 'closed-pdf-actions';
+
+        const viewLink = document.createElement('a');
+        viewLink.className = 'table-link';
+        viewLink.href = row.bulletinUrl;
+        viewLink.target = '_blank';
+        viewLink.rel = 'noopener';
+        viewLink.textContent = 'Veure PDF';
+        actions.appendChild(viewLink);
+
+        const regenerateLink = document.createElement('a');
+        regenerateLink.className = 'table-link';
+        regenerateLink.href = '#';
+        regenerateLink.textContent = 'Tornar a generar';
+        regenerateLink.addEventListener('click', event => {
+          event.preventDefault();
+          regenerateClosedBulletin(row);
+        });
+        actions.appendChild(regenerateLink);
+
+        cell.appendChild(actions);
       }
 
       function syncTutorCommentForSelection() {
@@ -1220,6 +1485,37 @@
           });
       }
 
+      function regenerateClosedBulletin(row) {
+        if (!isClosedMode() || !row.bulletinUrl) return;
+
+        setBusy(true, 'Tornant a generar el butlletí...');
+        google.script.run
+          .withSuccessHandler(result => {
+            if (!result || result.replacementVersion !== 'v72' || !result.bulletinUrl) {
+              setBusy(false);
+              showError(new Error('La substitució del butlletí no s\'ha pogut verificar. Actualitza la pàgina i torna-ho a provar.'));
+              return;
+            }
+            mergeClosedBulletinResult(result);
+            reloadClosedData(
+              result.replacementWarning || (result.replacementMode === 'overwritten'
+                ? 'Butlletí actualitzat.'
+                : 'Butlletí tornat a generar.'),
+              result.replacementWarning ? 'error' : 'success'
+            );
+          })
+          .withFailureHandler(error => {
+            setBusy(false);
+            showError(error);
+          })
+          .replaceClosedBulletinV2({
+            sheetName: state.selectedEvaluation,
+            group: state.selectedGroup,
+            student: row.studentFullName,
+            studentAccountId: row.studentAccountId
+          });
+      }
+
       function generateMissingClosedBulletins() {
         if (!isClosedMode()) return;
 
@@ -1289,6 +1585,102 @@
           });
       }
 
+      function openClosedBulletinContactDialog(row) {
+        if (!isClosedMode() || !row.bulletinUrl) return;
+
+        setBusy(true, 'Carregant contactes...');
+        google.script.run
+          .withSuccessHandler(data => {
+            setBusy(false);
+            const contacts = data.contacts || [];
+            if (!contacts.length) {
+              setStatus(`No s'han trobat correus de contacte per a ${row.studentFullName}.`, 'error');
+              return;
+            }
+            state.pendingContactRow = row;
+            renderClosedBulletinContactDialog(data);
+          })
+          .withFailureHandler(error => {
+            setBusy(false);
+            showError(error);
+          })
+          .getClosedBulletinContacts({
+            sheetName: state.selectedEvaluation,
+            group: state.selectedGroup,
+            student: row.studentFullName,
+            studentAccountId: row.studentAccountId
+          });
+      }
+
+      function renderClosedBulletinContactDialog(data) {
+        const row = state.pendingContactRow;
+        const dialog = document.getElementById('contact-dialog');
+        const description = document.getElementById('contact-dialog-description');
+        const options = document.getElementById('contact-options');
+        description.textContent = `Selecciona els contactes que han de rebre de nou el butlletí de ${row.studentFullName}.`;
+        options.innerHTML = '';
+        (data.contacts || []).forEach(contact => {
+          const label = document.createElement('label');
+          label.className = 'contact-option';
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.name = 'closed-bulletin-contact';
+          checkbox.value = contact.key;
+          checkbox.checked = true;
+          const text = document.createElement('span');
+          text.textContent = contact.name
+            ? `${contact.name} (${contact.email})`
+            : contact.email;
+          if (contact.sent) {
+            const marker = document.createElement('small');
+            marker.textContent = `Enviat: ${contact.sentMarker}`;
+            text.appendChild(marker);
+          }
+          label.appendChild(checkbox);
+          label.appendChild(text);
+          options.appendChild(label);
+        });
+        dialog.hidden = false;
+        const firstCheckbox = options.querySelector('input');
+        if (firstCheckbox) firstCheckbox.focus();
+      }
+
+      function closeContactDialog() {
+        document.getElementById('contact-dialog').hidden = true;
+        document.getElementById('contact-options').innerHTML = '';
+        state.pendingContactRow = null;
+      }
+
+      function resendClosedBulletinToSelectedContacts() {
+        const row = state.pendingContactRow;
+        if (!row || !isClosedMode()) return;
+
+        const contacts = Array.from(document.querySelectorAll('input[name="closed-bulletin-contact"]:checked'))
+          .map(input => input.value);
+        if (!contacts.length) {
+          setStatus('Cal seleccionar almenys un contacte.', 'error');
+          return;
+        }
+
+        closeContactDialog();
+        setBusy(true, 'Enviant correu...');
+        google.script.run
+          .withSuccessHandler(() => {
+            reloadClosedData('Correu enviat.', 'success');
+          })
+          .withFailureHandler(error => {
+            setBusy(false);
+            showError(error);
+          })
+          .resendClosedBulletinEmail({
+            sheetName: state.selectedEvaluation,
+            group: state.selectedGroup,
+            student: row.studentFullName,
+            studentAccountId: row.studentAccountId,
+            contacts
+          });
+      }
+
       function sendPendingClosedEmails() {
         if (!isClosedMode()) return;
 
@@ -1308,6 +1700,231 @@
             sheetName: state.selectedEvaluation,
             group: state.selectedGroup
           });
+      }
+
+      function requestClosedBatchAction(action) {
+        if (!isClosedMode()) return;
+        if (!state.isAdmin) {
+          if (action === 'generate') generateMissingClosedBulletins();
+          else sendPendingClosedEmails();
+          return;
+        }
+        state.pendingBatchAction = action;
+        document.getElementById('batch-scope-title').textContent = action === 'generate'
+          ? 'Generar butlletins'
+          : 'Enviar butlletins';
+        document.getElementById('batch-scope-menu').hidden = false;
+      }
+
+      function closeBatchScopeMenu() {
+        document.getElementById('batch-scope-menu').hidden = true;
+        state.pendingBatchAction = '';
+      }
+
+      function confirmClosedBatchScope(scope) {
+        const action = state.pendingBatchAction;
+        if (!action) return;
+        closeBatchScopeMenu();
+        setBusy(true, 'Calculant el procés...');
+        const payload = {
+          sheetName: state.selectedEvaluation,
+          group: state.selectedGroup,
+          action,
+          scope
+        };
+        google.script.run
+          .withSuccessHandler(plan => {
+            setBusy(false);
+            const actionText = action === 'generate' ? 'generar' : 'enviar';
+            const scopeText = scope === 'all' ? 'tots els grups' : state.selectedGroup;
+            const testText = plan.testEmail
+              ? `\n\nMODE PROVA: tots els correus s'enviaran a ${plan.testEmail}; no es marcaran com a enviats.`
+              : '';
+            const message = [
+              `Es crearà un procés per ${actionText} els butlletins de ${scopeText}.`,
+              `Alumnes: ${plan.studentCount}`,
+              `Pendents: ${plan.pendingCount}`,
+              `Omesos: ${plan.skippedCount}`,
+              `Incidències prèvies: ${plan.blockedCount}`
+            ].join('\n') + testText + '\n\nVols continuar?';
+            if (!window.confirm(message)) return;
+            createClosedBatchJob(payload);
+          })
+          .withFailureHandler(error => {
+            setBusy(false);
+            showError(error);
+          })
+          .getClosedBatchPreflight(payload);
+      }
+
+      function createClosedBatchJob(payload) {
+        setBusy(true, 'Creant el procés massiu...');
+        google.script.run
+          .withSuccessHandler(job => {
+            setBusy(false);
+            state.hadActiveBatch = true;
+            setStatus(`Procés ${job.jobId} creat. Continuarà encara que tanquis aquesta pàgina.`, 'success');
+            refreshClosedBatchJobs();
+          })
+          .withFailureHandler(error => {
+            setBusy(false);
+            showError(error);
+          })
+          .createClosedBatchJob(payload);
+      }
+
+      function refreshClosedBatchJobs() {
+        stopBatchPolling();
+        if (!state.isAdmin || !isClosedMode()) {
+          document.getElementById('job-panel').hidden = true;
+          return;
+        }
+        google.script.run
+          .withSuccessHandler(data => {
+            if (!isClosedMode()) return;
+            renderClosedBatchJobs(data);
+            const active = (data.jobs || []).some(job =>
+              ['QUEUED', 'RUNNING', 'WAITING_QUOTA', 'PAUSED'].includes(job.status));
+            if (active) {
+              state.hadActiveBatch = true;
+              state.batchPollTimer = window.setTimeout(refreshClosedBatchJobs, 5000);
+            } else if (state.hadActiveBatch) {
+              state.hadActiveBatch = false;
+              reloadClosedData('Procés massiu finalitzat.', 'success');
+            } else {
+              // Keep operational flags, including test-email mode, current while this view is open.
+              state.batchPollTimer = window.setTimeout(refreshClosedBatchJobs, 15000);
+            }
+          })
+          .withFailureHandler(error => {
+            showError(error);
+            state.batchPollTimer = window.setTimeout(refreshClosedBatchJobs, 15000);
+          })
+          .getClosedBatchJobs({ sheetName: state.selectedEvaluation });
+      }
+
+      function stopBatchPolling() {
+        if (state.batchPollTimer) window.clearTimeout(state.batchPollTimer);
+        state.batchPollTimer = null;
+      }
+
+      function renderClosedBatchJobs(data) {
+        const panel = document.getElementById('job-panel');
+        const list = document.getElementById('job-list');
+        const testNote = document.getElementById('batch-test-note');
+        const jobs = data && data.jobs || [];
+        testNote.hidden = !(data && data.testEmail);
+        testNote.textContent = data && data.testEmail ? `Mode prova: ${data.testEmail}` : '';
+        list.innerHTML = '';
+
+        if (!jobs.length) {
+          const empty = document.createElement('div');
+          empty.className = 'job-detail';
+          empty.textContent = 'Encara no hi ha processos per a aquesta avaluació.';
+          list.appendChild(empty);
+        } else {
+          jobs.forEach(job => list.appendChild(renderClosedBatchJob(job)));
+        }
+        panel.hidden = false;
+      }
+
+      function renderClosedBatchJob(job) {
+        const row = document.createElement('div');
+        row.className = 'job-row';
+
+        const identity = document.createElement('div');
+        const name = document.createElement('div');
+        name.className = 'job-name';
+        name.textContent = `${job.type === 'GENERATE_BULLETINS' ? 'Generació' : 'Enviament'} · ${job.scope === 'all' ? 'Tots els grups' : job.group}`;
+        const meta = document.createElement('div');
+        meta.className = 'job-detail';
+        meta.textContent = `${batchStatusLabel(job.status)} · ${job.createdAt}`;
+        identity.appendChild(name);
+        identity.appendChild(meta);
+
+        const progressWrap = document.createElement('div');
+        const summary = document.createElement('div');
+        summary.className = 'job-detail';
+        const current = [job.currentGroup, job.currentStudent].filter(Boolean).join(' · ');
+        const quota = job.remainingQuota === null ? '' : ` · quota: ${job.remainingQuota}`;
+        summary.textContent = `${job.processed}/${job.total} processats · ${job.success} correctes · ${job.skipped} omesos · ${job.failed + job.needsReview} incidències${quota}${current ? ` · ${current}` : ''}`;
+        const progress = document.createElement('progress');
+        progress.className = 'job-progress';
+        progress.max = Math.max(job.total, 1);
+        progress.value = Math.min(job.processed, progress.max);
+        progressWrap.appendChild(summary);
+        progressWrap.appendChild(progress);
+        if (job.lastError) {
+          const error = document.createElement('div');
+          error.className = 'job-detail';
+          error.textContent = job.lastError;
+          progressWrap.appendChild(error);
+        }
+
+        const actions = document.createElement('div');
+        actions.className = 'job-actions';
+        if (['QUEUED', 'RUNNING', 'WAITING_QUOTA'].includes(job.status)) {
+          actions.appendChild(createBatchJobButton('Pausar', () => runBatchJobCommand('pauseClosedBatchJob', job.jobId)));
+        } else if (job.status === 'PAUSED') {
+          actions.appendChild(createBatchJobButton('Reprendre', () => runBatchJobCommand('resumeClosedBatchJob', job.jobId)));
+        }
+        if (job.status === 'COMPLETED_WITH_ERRORS') {
+          actions.appendChild(createBatchJobButton('Reintentar', () => runBatchJobCommand('retryClosedBatchJob', job.jobId)));
+        }
+        actions.appendChild(createBatchJobButton('Auditoria', () => downloadBatchAudit(job.jobId)));
+
+        row.appendChild(identity);
+        row.appendChild(progressWrap);
+        row.appendChild(actions);
+        return row;
+      }
+
+      function createBatchJobButton(label, handler) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = label;
+        button.addEventListener('click', handler);
+        return button;
+      }
+
+      function runBatchJobCommand(method, jobId) {
+        setBusy(true, 'Actualitzant el procés...');
+        google.script.run
+          .withSuccessHandler(() => {
+            setBusy(false);
+            refreshClosedBatchJobs();
+          })
+          .withFailureHandler(error => {
+            setBusy(false);
+            showError(error);
+          })[method]({ jobId });
+      }
+
+      function downloadBatchAudit(jobId) {
+        setBusy(true, 'Preparant l\'auditoria...');
+        google.script.run
+          .withSuccessHandler(file => {
+            setBusy(false);
+            triggerFileDownload(file, 'text/csv');
+          })
+          .withFailureHandler(error => {
+            setBusy(false);
+            showError(error);
+          })
+          .exportClosedBatchAuditCsv({ jobId });
+      }
+
+      function batchStatusLabel(status) {
+        const labels = {
+          QUEUED: 'En cua',
+          RUNNING: 'En procés',
+          WAITING_QUOTA: 'Esperant quota',
+          PAUSED: 'Pausat',
+          COMPLETED: 'Completat',
+          COMPLETED_WITH_ERRORS: 'Completat amb incidències',
+          CANCELLED: 'Cancel·lat'
+        };
+        return labels[status] || status;
       }
 
       function downloadGroupXlsx() {
@@ -1349,7 +1966,7 @@
 
       function downloadGroupPdf(kind, allGroups) {
         closePrintMenu();
-        if (!isSessionPrintMode() || !hasGroupActaRows()) return;
+        if (!isGroupActaMode() || !hasGroupActaRows()) return;
 
         const actions = {
           statistics: {
@@ -1592,7 +2209,7 @@
 
       function updatePrintButton() {
         const printButton = document.getElementById('print-button');
-        const showPrintButton = isSessionPrintMode();
+        const showPrintButton = isGroupActaMode();
         printButton.closest('.print-control').hidden = !showPrintButton;
         printButton.disabled =
           !showPrintButton ||
@@ -1600,10 +2217,13 @@
           !hasGroupActaRows();
 
         const canPrintStudent = showPrintButton &&
+          !isClosedMode() &&
           state.rowsData &&
           state.rowsData.mode === 'student' &&
           (state.rowsData.rows || []).length;
-        document.getElementById('print-student-report').disabled = !canPrintStudent;
+        const studentReportButton = document.getElementById('print-student-report');
+        studentReportButton.hidden = isClosedMode();
+        studentReportButton.disabled = !canPrintStudent;
         ['print-group-xlsx', 'print-group-statistics', 'print-group-signatures', 'print-group-agreements']
           .forEach(id => {
             document.getElementById(id).disabled = !showPrintButton || !hasGroupActaRows();
@@ -1612,10 +2232,6 @@
       }
 
       function updateClosedActionButtons() {
-        const csvButton = document.getElementById('csv-button');
-        csvButton.hidden = !isClosedMode();
-        csvButton.disabled = !hasGroupActaRows() || document.body.classList.contains('busy');
-
         const showClosedActions = isClosedMode();
         const hasClosedRows = showClosedActions && state.evaluationData && (state.evaluationData.closedRows || []).length;
         ['bulk-pdf-button', 'bulk-mail-button'].forEach(id => {
@@ -1641,13 +2257,11 @@
           if (element.id === 'save-button') {
             element.disabled = isBusy || isClosedMode() || (!state.dirtyRows.size && !state.tutorCommentDirty && !state.groupCommentDirty);
           } else if (element.id === 'print-button') {
-            element.disabled = isBusy || !isSessionPrintMode() || !hasGroupActaRows();
-          } else if (element.id === 'csv-button') {
-            element.disabled = isBusy || !hasGroupActaRows();
+            element.disabled = isBusy || !isGroupActaMode() || !hasGroupActaRows();
           } else if (element.id === 'print-student-report') {
             element.disabled = isBusy || !state.rowsData || state.rowsData.mode !== 'student' || !(state.rowsData.rows || []).length;
           } else if (['print-group-xlsx', 'print-group-statistics', 'print-group-signatures', 'print-group-agreements'].includes(element.id)) {
-            element.disabled = isBusy || !isSessionPrintMode() || !hasGroupActaRows();
+            element.disabled = isBusy || !isGroupActaMode() || !hasGroupActaRows();
           } else if (['bulk-pdf-button', 'bulk-mail-button'].includes(element.id)) {
             const hasClosedRows = isClosedMode() && state.evaluationData && (state.evaluationData.closedRows || []).length;
             element.disabled = isBusy || !hasClosedRows;

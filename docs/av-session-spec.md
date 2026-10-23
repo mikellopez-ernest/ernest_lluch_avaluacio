@@ -22,6 +22,8 @@ to its state:
 | Folder | `scripts/av_session` |
 | Script ID | Stored only in the local ignored `.clasp.json`; do not commit it. |
 | Page title | `Sessió d'avaluació` |
+| Execute as | Owner / me |
+| Access | Users in `iernestlluch.cat` |
 
 Deploy as a web app, not as a library.
 
@@ -50,8 +52,9 @@ comma, trimmed, deduped in first-seen order, and shown in the group selector.
 
 `ADMIN_PRIVILEGES` is not a group and is never shown in the group selector. If
 this marker is present, the backend returns `isAdmin = true` and the UI displays
-an informational `Admin` badge beside the page title. The marker does not grant
-extra group visibility by itself.
+an informational `Admin` badge beside the page title. The marker alone does not
+broaden the normal group selector beyond the groups resolved from that
+teacher's responsibilities, although it enables administrator-only actions.
 
 The script also reads the comma-separated `admin_privileges` script property.
 Email matching is trimmed and case-insensitive. A matching in-domain account is
@@ -60,6 +63,11 @@ can access every real group listed in
 `Dinantia` -> `teachers_2_dinantia.dinantia_group_names`.
 `ADMIN_PRIVILEGES` remains a marker and is excluded from the group selector.
 The backend repeats this authorization check for every protected request.
+
+For `av_session`, both the marker and the property enable admin-only actions.
+Only the property override automatically broadens the normal selector to every
+real group in `teachers_2_dinantia`; this distinction is intentional and is
+summarized in [`admin-privileges.md`](admin-privileges.md).
 
 The endpoint does not read `Dinantia -> dinantia_2_dades_alumnes` and does not
 resolve Dades alumnes sheet names.
@@ -160,7 +168,9 @@ menu contains:
 
 The four group-level print options are enabled after an evaluation and visible
 group have been loaded. The same two-button surface and the same print menu are
-shown in both `Avaluació professors` and `Mode junta`.
+shown in `Avaluació professors`, `Mode junta`, and `Tancada`. In `Tancada`,
+`Imprimir butlletí` is hidden because bulletins are managed from the closed-mode
+status table and the bulk bulletin button.
 
 For administrators, choosing any of the three group PDF actas opens a second
 scope menu:
@@ -179,14 +189,38 @@ rows are omitted because there is no student/tutor dataset from which to build
 their acta. The selected-student bulletin stays student-specific, and the Excel
 option stays an XLSX export for the selected group.
 
-In `Tancada`, the page has three floating bubble buttons in the bottom-right
-corner, ordered from left to right:
+In `Tancada`, the page has the same Print bubble as the editable states, plus
+the closed-evaluation bulk buttons:
 
 | Button | Behavior |
 | --- | --- |
-| Spreadsheet icon | Generates and downloads the group XLSX acta described in `Group XLSX Acta Export`. |
+| Print | Opens the group print menu without `Imprimir butlletí`: group XLSX plus the three PDF actas. |
 | PDF icon | Generates PDF bulletins for all remaining students in the selected group whose `Butlletí_url` is blank. |
 | Mail icon | Sends bulletin emails for all students in the selected group that do not have a send marker in either `enviat_email_1` or `enviat_email_2`. |
+
+For non-administrators, the closed-evaluation PDF and mail buttons keep their
+selected-group behavior. For administrators, either button first opens a scope
+menu:
+
+| Scope | Behavior |
+| --- | --- |
+| `Aquest grup` | Queues the operation for the selected group. |
+| `Tots els grups` | Queues the operation for every group represented in the selected evaluation's `_tutoria` sheet. |
+
+Before creating an administrator job, the page requests a server-side preflight
+and confirms the exact student/item totals, already-completed items, initial
+incidences, and whether test-email mode is active. Creating a job returns
+control to the page immediately. The job continues when the page or browser is
+closed.
+
+Administrators see a compact `Processos massius` monitor below the closed table.
+It shows status, processed/total counts, successes, omissions, incidences,
+current group/student, last heartbeat, and remaining mail quota when relevant.
+Available controls are pause, resume, retry failed/review items, and download
+audit CSV. While a job is active, the browser refreshes this monitor without
+blocking the evaluation page. While the closed view remains open, it also
+refreshes operational configuration every 15 seconds so a changed or removed
+`bulletin_test_email` property is reflected without requiring a page reload.
 
 The layout should be vertically compact so the title, selectors, table, and
 tutor comment field can fit together on screen. Table rows use reduced padding
@@ -316,6 +350,10 @@ If an older `{sheet_name}_tutoria` sheet is missing any of the bulletin/email
 columns, the backend creates the missing headers automatically before writing
 PDF URLs, destination email addresses, or send markers.
 
+`configuration` creates the base columns only through `Butlletí_url`.
+`av_session` owns the four email columns as a lazy operational extension. This
+is not considered a migration of the evaluation's academic schema.
+
 When loading a group in `Avaluació professors` or `Mode junta`, the endpoint
 reads `{sheet_name}_tutoria` and returns the tutor comments for that visible
 group. The browser keeps them cached by `student_account_id` and by
@@ -354,8 +392,8 @@ The table columns are:
 | UI column | Source / behavior |
 | --- | --- |
 | student name | `student_full_name` |
-| `Butlletí` | If `Butlletí_url` has a value, show a PDF icon linked to that Drive/download URL. If it is blank, show `Generar` as a link pointing to `#`; clicking it generates and stores the bulletin PDF as described in `Closed Bulletin Storage`. |
-| `Enviat` | If at least one of `enviat_email_1` or `enviat_email_2` has a value, show a check icon. If both are blank, show `Enviar` as a link pointing to `#`; clicking it sends the bulletin link as described in `Closed Bulletin Email Sending`. |
+| `Butlletí` | If `Butlletí_url` has a value, show `PDF`. Clicking it reveals `Veure PDF`, which opens the current Drive/download URL, and `Tornar a generar`, which replaces the stored report as described in `Closed Bulletin Storage`. If it is blank, show `Generar`; clicking it generates and stores the bulletin PDF. |
+| `Enviat` | If at least one of `enviat_email_1` or `enviat_email_2` has a value, show a clickable check icon. It opens a contact picker for resending the bulletin. If both are blank, show `Enviar`; clicking it sends the bulletin link as described in `Closed Bulletin Email Sending`. |
 
 The closed table is a status/action surface, not a grading surface. It must not
 show grade controls or tutor-comment editing.
@@ -382,19 +420,20 @@ example:
 - `Generant butlletins pendents...`
 - `Enviant correus pendents...`
 
-During missing PDF bulletin generation, the browser processes students
-sequentially and updates the loading message with the current student's full
-name under the generic progress message.
+For a non-administrator's legacy selected-group PDF operation, the browser
+processes students sequentially and updates the loading message with the current
+student's full name under the generic progress message. Administrator PDF and
+mail operations use the persistent background jobs described below; the overlay
+is shown only while calculating the preflight or creating/changing a job.
 
 The user must not be able to change selectors, click table actions, or launch
 another floating action until the running process finishes or fails.
 
 ## Group XLSX Acta Export
 
-When the user selects `Imprimir estadístiques Excel` from the print menu in
-`Avaluació professors` or `Mode junta`, or clicks the spreadsheet-style bubble
-button in `Tancada`, the app generates an XLSX file with the grades of all
-students in the selected group.
+When the user selects `Imprimir estadístiques Excel` from the print menu, the
+app generates an XLSX file with the grades of all students in the selected
+group. This applies to `Avaluació professors`, `Mode junta`, and `Tancada`.
 
 The XLSX uses data from:
 
@@ -587,6 +626,34 @@ the same generation/storage process for every remaining student in the selected
 group whose `Butlletí_url` is blank. Students that already have `Butlletí_url`
 are skipped.
 
+When the user chooses `Tornar a generar` for one student, the backend must:
+
+1. Revalidate the closed evaluation, visible group, and student tutoria row.
+2. Resolve the current `Butlletí_url` to its Google Drive file ID and use the
+   Drive API media-upload endpoint to overwrite that file's PDF content. This
+   preserves the exact same Drive URL and needs only edit permission, which is
+   less restrictive than trashing a Shared Drive file.
+3. If the overwrite succeeds, retain the current tutoring-sheet URL unchanged.
+4. If the overwrite fails, generate a replacement file using the standard
+   storage path, locate the student row again by `student_account_id` and
+   group, and write/read-back verify the replacement URL.
+5. After a new-file fallback, attempt to move the prior file to trash. The app
+   first uses `DriveApp`; if that fails, it retries with Google Drive API v3
+   and `supportsAllDrives=true` for Shared Drive compatibility.
+6. If Drive denies access to trash the prior file, retain the verified new URL
+   and show a clear warning. This can happen for an older file owned outside
+   the web app's Drive authority; its owner must remove it manually.
+
+This preserves the existing bulletin URL whenever Drive allows content edits,
+and keeps the stored URL as a verified fallback even when an externally owned
+prior Drive file cannot be deleted by the web app.
+
+For an administrator, `Aquest grup` and `Tots els grups` run this operation as
+persistent jobs. PDF work is limited to six pending students per worker
+execution and also stops before the Apps Script execution-time boundary. The
+worker reads the evaluation table once per execution and reuses it for every PDF
+in that batch.
+
 The backend must validate before generating/storing:
 
 - the selected evaluation is still in `Tancada`
@@ -642,6 +709,22 @@ For the selected student:
    - `email_2` and `enviat_email_2` for the second emailed contact
 6. Refresh the closed-evaluation table row so the `Enviat` column shows the
    check icon.
+
+### Resending a bulletin
+
+Clicking the check icon opens a small dialog listing the first two valid
+Dinantia contacts for that student. Each contact has a checkbox selected by
+default. The dialog shows an existing send marker when that contact was already
+recorded as sent. The user may deselect either contact and send only to the
+selected addresses.
+
+The backend must re-read and validate the selected contact keys against the
+student's current first two contacts in `contacts_cache`; the browser never
+supplies arbitrary destination addresses. A successful production resend
+updates the matching `email_1`/`enviat_email_1` or
+`email_2`/`enviat_email_2` slot with a fresh timestamp marker. Test-mode
+delivery follows the existing test-email protection and does not mark the real
+contacts as sent.
 
 Email content must be defined in a dedicated Apps Script template file so it is
 easy to edit without touching backend logic:
@@ -702,6 +785,81 @@ the same sending process for every student in the selected group whose
 `enviat_email_1` and `enviat_email_2` are both blank. Students without
 `Butlletí_url` are not sent; the UI should report that their documents need to
 be generated first.
+
+For an administrator, `Aquest grup` and `Tots els grups` run email delivery as
+persistent jobs. The contact cache is read once while preparing the job. There
+is one job item per intended recipient, never one multi-recipient email, so
+delivery is private and independently auditable. A worker sends at most 24
+recipient items per execution and also obeys its runtime deadline.
+
+### Test-email safety switch
+
+The optional private script property `bulletin_test_email` is a hard safety
+switch. While it contains an email address:
+
+- every bulletin email, including a single-row send, is delivered to that test
+  address instead of the intended contact
+- the intended address is included in the subject as
+  `[PROVA per a intended@example]`
+- batch items finish as `TEST_SENT`
+- `email_1`, `enviat_email_1`, `email_2`, and `enviat_email_2` are not changed
+- the monitor displays the active test address
+
+A job snapshots test mode at creation. In addition, the worker checks the
+property before delivery, so setting the property after a production job was
+queued still prevents its remaining emails from reaching real contacts.
+Removing the property does not turn an already-created test job into a
+production job.
+
+## Persistent Bulk Jobs And Audit
+
+The `Grades` spreadsheet contains three global operational sheets. Their exact
+headers are part of the shared database contract in
+[`database-spec.md`](database-spec.md#global-evaluation-session-job-sheets). The
+app creates them when the first job is prepared or when
+`setupAvSessionBatchInfrastructure()` is run. Missing columns are appended;
+existing rows and columns are never deleted.
+
+| Sheet | Purpose |
+| --- | --- |
+| `av_session_jobs` | One row per requested bulk operation, including evaluation, scope, requester, timestamps, counters, heartbeat, current student/group, quota, test address, and last error. |
+| `av_session_job_items` | One row per student PDF or per email recipient, including immutable student/contact snapshot, status, attempts, PDF URL, draft ID, Gmail message ID, and dispatch token. |
+| `av_session_job_events` | Append-only lifecycle/error events with actor, timestamp, message, and JSON details. |
+
+Job types are `GENERATE_BULLETINS` and `SEND_BULLETINS`. Job lifecycle values
+are `QUEUED`, `RUNNING`, `WAITING_QUOTA`, `PAUSED`, `COMPLETED`, and
+`COMPLETED_WITH_ERRORS`. Important item lifecycle values are `PENDING`,
+`RUNNING`, `SENDING`, `COMPLETED`, `SENT`, `TEST_SENT`,
+`SKIPPED_ALREADY_EXISTS`, `SKIPPED_ALREADY_SENT`, `BLOCKED_MISSING_PDF`,
+`FAILED`, and `NEEDS_REVIEW`.
+
+`processAvSessionBatchJobs()` is the only time-trigger worker. The setup code
+keeps exactly one project trigger for it, scheduled every minute. The worker
+uses a script lock, processes the oldest runnable job, writes a heartbeat, and
+returns the job to `QUEUED` when another batch is required. A job-level failure
+pauses the job and records an event instead of looping silently.
+
+Email delivery uses `GmailApp.createDraft(...).send()`. Before sending, the item
+is persisted as `SENDING` with its Gmail draft ID and unique dispatch token;
+after sending, the Gmail message ID is persisted. If an execution stops in this
+window, the next worker checks the draft and Sent mail. It never blindly
+resends an uncertain item: an unresolvable delivery becomes `NEEDS_REVIEW`.
+
+The worker checks `MailApp.getRemainingDailyQuota()` immediately before an
+email batch and reserves ten recipients. If the remaining quota is not safely
+above that reserve, the job becomes `WAITING_QUOTA` and is retried by later
+trigger runs. Per-item failures are retried at most three times with a delay;
+permanent failures remain in the audit and produce
+`COMPLETED_WITH_ERRORS`.
+
+The downloadable audit CSV contains both final item snapshots and append-only
+events. It includes intended and actual delivery addresses, Drive URL, draft
+and Gmail message IDs, attempt count, errors, actors, and timestamps.
+
+The timed worker runs as the account that installs the trigger. The deployment
+owner must run `grantPermissionsManually()` after scope changes and may run
+`setupAvSessionBatchInfrastructure()` explicitly to create/repair the sheets
+and install the trigger before the first production job.
 
 ## Save Rules
 
@@ -818,7 +976,9 @@ selected student and group.
 | Function | Purpose |
 | --- | --- |
 | `doGet` | Web app entrypoint. |
-| `grantPermissionsManually` | Manual authorization helper for the owner. It probes spreadsheet access, Drive folder/file creation and sharing, XLSX export through `UrlFetchApp`, external requests, and email sending permissions. |
+| `grantPermissionsManually` | Manual authorization helper for the owner. It probes spreadsheet access, Drive folder/file creation and sharing, XLSX export through `UrlFetchApp`, external requests, email sending, Gmail drafts, and project-trigger permissions. |
+| `grantBulletinReplacementPermissions` | One-time Drive-only authorization helper. It creates, retrieves by ID, shares, and trashes a temporary file in the executing account's Drive to request and verify the Drive permissions used by bulletin replacement. It does not touch real reports or send email. |
+| `authorizeAvSessionDriveAccess` | One-time interactive authorization helper. It reports whether the executing account already has the project's full OAuth grant; otherwise it returns Google's consent link for all declared `av_session` scopes, including full Drive access. OAuth consent can grant scopes, but cannot override a file or Shared Drive ACL. |
 | `getAvSessionData` | Loads active-user context, visible groups, and session-available evaluations. |
 | `getAvSessionEvaluationData` | Loads students and subjects for a selected evaluation and group. |
 | `getAvSessionRows` | Loads table rows for the selected student or subject. |
@@ -829,10 +989,41 @@ selected student and group.
 | `createGroupAgreementsPdf` | Generates the selected group's board-agreements acta as a downloadable PDF. |
 | `createAllGroupsActaPdf` | Admin-only generator that concatenates one selected acta type for every evaluation group into a single PDF. |
 | `generateClosedBulletin` | Generates and stores one closed-evaluation student bulletin PDF, then writes `Butlletí_url`. |
+| `regenerateClosedBulletin` | Backwards-compatible wrapper for the closed-bulletin replacement flow. |
+| `replaceClosedBulletinV2` | Overwrites the currently linked PDF while preserving its URL when possible; otherwise creates a verified replacement, updates `Butlletí_url`, and attempts to trash the prior file. |
 | `generateMissingClosedBulletins` | Generates and stores closed-evaluation bulletin PDFs for all selected-group students still missing `Butlletí_url`. |
 | `sendClosedBulletinEmail` | Sends one closed-evaluation bulletin email to the student's first available contacts. |
+| `getClosedBulletinContacts` | Returns the student's first two valid contacts plus their per-slot send-marker state for the resend dialog. |
+| `resendClosedBulletinEmail` | Revalidates selected contact keys and resends the existing bulletin only to those contacts. |
 | `sendPendingClosedBulletinEmails` | Sends closed-evaluation bulletin emails for selected-group students that have a PDF URL and no send marker. |
 | `createClosedGroupXlsx` | Generates a downloadable XLSX acta for the selected group in `Avaluació professors`, `Mode junta`, or `Tancada`. |
 | `createClosedGroupCsv` | Backwards-compatible wrapper that now returns the same XLSX payload as `createClosedGroupXlsx`. |
+| `setupAvSessionBatchInfrastructure` | Admin-only creation/repair of job sheets and the single time-driven worker trigger. |
+| `getClosedBatchPreflight` | Admin-only exact count and safety preflight for a group/all-groups job. |
+| `createClosedBatchJob` | Creates the persistent generation or email job and its item snapshot. |
+| `getClosedBatchJobs` | Returns recent job status for the selected evaluation monitor. |
+| `pauseClosedBatchJob` | Pauses a queued/running job between worker batches. |
+| `resumeClosedBatchJob` | Returns a paused job to the queue. |
+| `retryClosedBatchJob` | Requeues failed, review, and missing-PDF items after an operator correction. |
+| `exportClosedBatchAuditCsv` | Downloads item snapshots and events for one job. |
+| `processAvSessionBatchJobs` | Time-trigger worker for persistent PDF and email batches. |
 
 All implementation helpers should use a trailing underscore.
+
+## Private Properties And Authorization
+
+The `av_session` Apps Script project uses these private script properties:
+
+| Property | Purpose |
+| --- | --- |
+| `db` | Shared database-registry spreadsheet ID. |
+| `DRIVE_FOLDER_TUTOR` | Base Drive folder for generated bulletin files. |
+| `admin_privileges` | Optional comma-separated project-local administrator emails. |
+| `bulletin_test_email` | Optional hard redirect for all bulletin email delivery. |
+
+After a scope change, the deployment owner must run
+`grantPermissionsManually()`. Before the first administrator batch, run
+`setupAvSessionBatchInfrastructure()` once to create/repair the three job
+sheets and install the single one-minute worker trigger. Job creation also
+repairs the sheets and ensures the trigger, but it must not be used as a
+substitute for completing the owner's OAuth consent.

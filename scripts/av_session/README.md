@@ -8,6 +8,8 @@ Canonical behavior is specified in
 ## Apps Script
 
 - Script ID: stored only in the local ignored `.clasp.json`; do not commit it.
+- Deployment type: web app, executed as the owner and restricted to users in
+  `iernestlluch.cat`.
 
 ## Endpoint
 
@@ -54,7 +56,9 @@ without the new sheet still load normally and simply hide this editor.
 In `Avaluació professors` and `Mode junta`, the bottom-right action area has the
 existing Save button and one full-color Print button. The Print button opens a
 menu for the selected-student bulletin, the group XLSX acta, and three group PDF
-actas: statistics, full signatures, and board agreements. Their layouts live in
+actas: statistics, full signatures, and board agreements. In `Tancada`, that
+same Print button is shown without the student-bulletin option; it retains the
+selected-group XLSX acta and the three group PDF actas. Their layouts live in
 `PdfReport.html`, `ActaStatistics.html`, `ActaSignatures.html`, and
 `ActaAgreements.html` so they can be edited without changing data-access code.
 Each acta header identifies the group's main tutor as `Tutor: {name}`, using
@@ -75,6 +79,16 @@ selected evaluation, with each group starting on a new page. The student
 bulletin remains student-specific and the Excel option remains a selected-group
 XLSX export.
 
+In `Tancada`, administrator bulk PDF and email buttons also offer `Aquest grup`
+and `Tots els grups`. These operations are persistent jobs rather than one long
+web request. Their state and full audit are stored in `Grades` sheets
+`av_session_jobs`, `av_session_job_items`, and `av_session_job_events`; a single
+one-minute trigger runs `processAvSessionBatchJobs`. The page shows live
+progress and supports pause, resume, retry, and audit CSV download. Email work
+uses one Gmail draft/message per contact, records draft and message IDs, waits
+for recipient quota when needed, and never automatically resends an uncertain
+delivery.
+
 The special marker `ADMIN_PRIVILEGES` enables admin-only actions but is not a
 real group and is never shown in the group selector. When present, the UI shows
 an informational `Admin` badge beside the title.
@@ -92,6 +106,15 @@ be committed:
 
 - `db`: database registry spreadsheet ID
 - `DRIVE_FOLDER_TUTOR`: Drive folder ID used for generated tutor bulletins
+- `admin_privileges`: optional comma-separated administrator emails for this
+  Apps Script project
+- `bulletin_test_email`: optional safety address. When set, all bulletin emails
+  are redirected there and real `_tutoria` send markers are not changed.
+
+These properties are project-local and must not be committed. The
+responsibility-derived `ADMIN_PRIVILEGES` marker also enables administrator
+actions, but only the `admin_privileges` property broadens the normal group
+selector to every mapped real group.
 
 ## Public Functions
 
@@ -99,7 +122,9 @@ be committed:
 | --- | --- |
 | `doGet` | Web app entrypoint. |
 | `grantPermissionsManually` | Manual authorization helper for the owner. |
-| `getAvSessionData` | Loads active-user context, visible groups, and `Mode junta` evaluations. |
+| `grantBulletinReplacementPermissions` | Drive-only create/read/share/trash permission probe using a temporary personal-Drive file. |
+| `authorizeAvSessionDriveAccess` | Returns Google's full-scope consent link when the executing account still needs project authorization. |
+| `getAvSessionData` | Loads active-user context, visible groups, and evaluations in `Avaluació professors`, `Mode junta`, or `Tancada`. |
 | `getAvSessionEvaluationData` | Loads students and subjects for a selected evaluation and group. |
 | `getAvSessionRows` | Loads table rows for the selected student or subject. |
 | `saveAvSessionRows` | Saves dirty grades, individual tutor comments, and shared group comments. |
@@ -109,6 +134,17 @@ be committed:
 | `createGroupSignaturesPdf` | Generates the selected group's teacher/signature PDF acta. |
 | `createGroupAgreementsPdf` | Generates the selected group's board-agreements PDF acta. |
 | `createAllGroupsActaPdf` | Generates one admin-only PDF containing the selected acta type for every evaluation group. |
+| `generateClosedBulletin` / `sendClosedBulletinEmail` | Generates or sends one closed-evaluation student's bulletin. |
+| `replaceClosedBulletinV2` | Regenerates a closed bulletin by overwriting the existing Drive PDF whenever editing is allowed, preserving its link. |
+| `getClosedBulletinContacts` / `resendClosedBulletinEmail` | Loads the first two valid contacts for a sent bulletin and resends only to the checked contacts. |
+| `generateMissingClosedBulletins` / `sendPendingClosedBulletinEmails` | Legacy selected-group bulk handlers used for non-admin closed-mode actions. |
+| `setupAvSessionBatchInfrastructure` | Creates/repairs the bulk-job sheets and installs the worker trigger. |
+| `getClosedBatchPreflight` | Calculates exact admin bulk-job totals before confirmation. |
+| `createClosedBatchJob` | Queues group or all-groups PDF/email work. |
+| `getClosedBatchJobs` | Loads job-monitor data. |
+| `pauseClosedBatchJob` / `resumeClosedBatchJob` / `retryClosedBatchJob` | Operates a persistent job. |
+| `exportClosedBatchAuditCsv` | Downloads the job's item and event audit. |
+| `processAvSessionBatchJobs` | Time-driven batch worker. |
 
 All implementation helpers should use a trailing underscore.
 
@@ -117,7 +153,10 @@ All implementation helpers should use a trailing underscore.
 ```sh
 clasp pull
 clasp push
-clasp deploy --description "av_session web app"
+clasp deployments
+clasp deploy --deploymentId <existing-deployment-id> --description "av_session web app"
 ```
 
-The local `.clasp.json` file is intentionally ignored by git, matching the repository's existing clasp-secret policy.
+Use the existing deployment ID for routine releases so the web-app URL remains
+unchanged. Do not commit that ID. The local `.clasp.json` file is intentionally
+ignored by git, matching the repository's existing clasp-secret policy.

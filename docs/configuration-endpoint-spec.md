@@ -33,6 +33,21 @@ Only these functions may be public:
 
 All other functions must be private helpers with a trailing `_`.
 
+## Private Script Properties
+
+The `configuration` Apps Script project uses these private Script Properties:
+
+| Property | Required | Purpose |
+| --- | --- | --- |
+| `db` | Yes | Shared database-registry spreadsheet ID. |
+| `dinantia_api_user` | Yes | Dinantia API user used while listing groups and expanding student accounts. |
+| `dinantia_api_secret` | Yes | Dinantia API secret paired with `dinantia_api_user`. |
+| `admin_privileges` | No | Comma-separated project-local administrator emails. |
+
+Properties are local to this Apps Script project. They are not inherited from
+`teacher_pannel`, `av_session`, or another deployment, and their values must
+never be committed, logged, or returned to the browser.
+
 ## Data Dependencies
 
 | Source | Usage |
@@ -54,7 +69,8 @@ All other functions must be private helpers with a trailing `_`.
 The web app deployment may be opened by any `@iernestlluch.cat` account, but
 the configuration data exposed inside the page is responsibility-filtered.
 
-Permission resolution must match the evaluation-session app:
+Teacher, substitute, responsibility, and marker resolution uses the same chain
+as the evaluation-session app:
 
 1. Read the active user email from `Session.getActiveUser().getEmail()`.
 2. Find the teacher in `Dades de professors` -> `Llista` by `CORREU INSTIT`.
@@ -100,7 +116,8 @@ Server-side enforcement is mandatory:
    group codes, except admins, who receive all cache group codes.
 2. `saveSubjectsCacheEdits` rejects saves for non-visible group codes.
 3. `buildSubjectsCache`, `createEvaluation`, and
-   `getEvaluationCreationStatus` require `ADMIN_PRIVILEGES`.
+   `getEvaluationCreationStatus` require resolved administrator status from
+   either `ADMIN_PRIVILEGES` or `admin_privileges`.
 4. `createEvaluation` also rejects selected group codes not visible to the
    admin user.
 
@@ -113,9 +130,9 @@ The page shows:
 1. A group-code selector, empty by default.
 2. Editable rows for the selected group code.
 3. A floating refresh button for rebuilding `subjects_cache`, visible only to
-   users with `ADMIN_PRIVILEGES`.
-4. A floating `Crear avaluació` button, visible only to users with
-   `ADMIN_PRIVILEGES`.
+   resolved administrators.
+4. A floating `Crear avaluació` button, visible only to resolved
+   administrators.
 5. A row-level red delete button that appears on hover/focus.
 6. `+` and save buttons under the editable rows.
 
@@ -319,6 +336,12 @@ generation rule.
 | J | `Comentari_tutor` | Blank at creation time. |
 | K | `Butlletí_url` | Blank at creation time. |
 
+This is the base tutoria schema created by `configuration`. It deliberately
+does not create delivery columns. `av_session` owns the lazy addition of
+`email_1`, `enviat_email_1`, `email_2`, and `enviat_email_2` when bulletin
+delivery first needs them. The complete shared contract is in
+[`database-spec.md`](database-spec.md#tutoria-evaluation-sheet-layout).
+
 `{sheet_name}_tutoria_grups` columns:
 
 | Column | Header | Source / Behavior |
@@ -378,5 +401,9 @@ It must touch:
 | `Grades` -> `avaluacions`. |
 | `Horaris` -> `GPU001`. |
 | `Dinantia` -> `dinantia_2_dades_alumnes`. |
+| `Dinantia` -> `teachers_2_dinantia`. |
 | `Dades de professors` -> `Llista`. |
+| `Dades de professors` -> `leave_absence`. |
 | `Càrrega lectiva` -> `assignatures`. |
+| `Càrrega lectiva` -> `carrecs`. |
+| Dinantia `/v1/groups/index` through the configured API credentials. |

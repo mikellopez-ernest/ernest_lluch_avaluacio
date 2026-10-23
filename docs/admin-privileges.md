@@ -10,7 +10,7 @@ it is working.
 email addresses that must receive full access in the Apps Script project where
 the property is configured.
 
-Use it for accounts that need to administer the configuration app but may not
+Use it for accounts that need project-local administrator access but may not
 have:
 
 - a matching teacher row in `Dades de professors` -> `Llista`;
@@ -68,8 +68,8 @@ The safest check is in the Apps Script editor:
 3. Confirm that the key is exactly `admin_privileges`.
 4. Confirm that the expected email appears as a complete comma-separated
    value.
-5. Confirm that you are editing the same Apps Script project used by the live
-   configuration deployment.
+5. Confirm that you are editing the same Apps Script project used by the
+   intended live deployment.
 
 Avoid printing the full property value to execution logs because that exposes
 the administrator list to everyone who can inspect those logs.
@@ -104,6 +104,14 @@ A property-based administrator receives the following access:
 | `teacher_pannel` | Can read and save every row in an evaluation in `Avaluació professors`, independently of `teacher_email`. |
 | `av_session` | Can use every real group listed in `Dinantia` -> `teachers_2_dinantia.dinantia_group_names`, even without a teacher row. |
 
+The available administrator sources differ by app:
+
+| Web app | `admin_privileges` property | Responsibility-derived `ADMIN_PRIVILEGES` marker |
+| --- | --- | --- |
+| `configuration` | Grants admin actions and all local cache groups. | Grants admin actions and all local cache groups. |
+| `teacher_pannel` | Grants access to every active-evaluation row. | Not read by this app. |
+| `av_session` | Grants admin actions and broadens the normal selector to every real mapped group. | Grants admin actions but keeps the normal selector responsibility-scoped; all-groups admin document/batch actions perform their own server-side all-group resolution. |
+
 Access is enforced again in protected server functions; the `Admin` badge and
 admin-only controls are only UI indicators, not the security boundary.
 
@@ -127,8 +135,10 @@ After saving the property, reload the matching live web app and verify:
 
 1. The `Admin` indicator or admin-only controls appear where applicable.
 2. `configuration` exposes all cache groups and its protected actions.
-3. `teacher_pannel` exposes groups and subjects belonging to all teachers.
-4. `av_session` exposes all real Dinantia groups and never includes
+3. `teacher_pannel` exposes groups and subjects belonging to all teachers when
+   the property is configured in that script.
+4. `av_session` exposes all real Dinantia groups for a property administrator
+   and never includes
    `ADMIN_PRIVILEGES` as a selectable group.
 
 Do not run the refresh action merely as a permission test. Rebuilding the cache

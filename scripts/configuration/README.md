@@ -10,6 +10,18 @@ Database sheet contracts are specified in
 ## Apps Script
 
 - Script ID: stored only in the local ignored `.clasp.json`; do not commit it.
+- Deployment type: web app, executed as the owner and restricted to users in
+  `iernestlluch.cat`.
+
+## Private Script Properties
+
+- `db`: shared database-registry spreadsheet ID
+- `dinantia_api_user`: Dinantia API user
+- `dinantia_api_secret`: Dinantia API secret
+- `admin_privileges`: optional comma-separated administrator emails for this
+  Apps Script project
+
+These properties are project-local and must not be committed.
 
 ## Endpoint
 
@@ -173,13 +185,21 @@ This forces Google to show the authorization prompt before users open the endpoi
 - `Grades` -> `avaluacions`
 - `Horaris` -> `GPU001`
 - `Dinantia` -> `dinantia_2_dades_alumnes`
+- `Dinantia` -> `teachers_2_dinantia`
 - `Dades de professors` -> `Llista`
+- `Dades de professors` -> `leave_absence`
 - `Càrrega lectiva` -> `assignatures`
+- `Càrrega lectiva` -> `carrecs`
+- Dinantia `/v1/groups/index`
 
 ## Common Commands
 
 ```sh
 clasp pull
 clasp push
-clasp open
+clasp deployments
+clasp deploy --deploymentId <existing-deployment-id> --description "configuration web app"
 ```
+
+Use the existing deployment ID for routine releases so the web-app URL remains
+unchanged. Do not commit that ID.

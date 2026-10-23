@@ -43,9 +43,28 @@ from all groups and subjects, and save any row while the evaluation remains in
 `teacher_email` matches their active account. The backend re-checks the
 property during every save; the UI is not the authorization boundary.
 
+The teacher panel does not perform responsibility lookup and does not read the
+`ADMIN_PRIVILEGES` marker. Its only administrator source is its own
+project-local `admin_privileges` property. This differs intentionally from
+`configuration` and `av_session`.
+
 Local `.clasp.json` files are intentionally ignored by git. The script folder
 must keep a local `.clasp.json` pointing to the correct Apps Script project so
 `clasp push` and `clasp deploy` target the right script.
+
+## Private Script Properties
+
+The `teacher_pannel` Apps Script project uses these private Script Properties:
+
+| Property | Required | Purpose |
+| --- | --- | --- |
+| `db` | Yes | Shared database-registry spreadsheet ID. |
+| `admin_privileges` | No | Comma-separated project-local administrator emails. |
+
+Properties are local to this Apps Script project. In particular, granting an
+administrator in `configuration` or `av_session` does not grant the same user
+administrator access here. Property values must never be committed, logged, or
+returned to the browser.
 
 ## Data Sources
 
@@ -268,11 +287,17 @@ When saving:
 2. Show the full-page busy overlay.
 3. Send only dirty rows to the backend.
 4. Re-check the selected evaluation status in `avaluacions`.
-5. Confirm each edited `sheetRow` still belongs to the active teacher email.
+5. Confirm each edited `sheetRow` still belongs to the active teacher email,
+   unless the active user is a property administrator.
 6. Write the values to the selected `Grades` -> `{sheet_name}` sheet.
 7. Reload data from the spreadsheet.
 8. Re-render the selected group and subject when still available.
 9. Clear yellow highlighting only after the reload succeeds.
+
+The request contains only dirty rows. Under the script lock, the backend reads
+the current sheet, merges those dirty values into the in-memory table, and
+writes the complete rectangular editable region from `PI` through the last
+custom concept. Metadata columns outside that region are never rewritten.
 
 Writable fields:
 

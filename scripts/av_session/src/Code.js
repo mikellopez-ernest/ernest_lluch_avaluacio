@@ -147,6 +147,17 @@ function grantPermissionsManually() {
     Logger.log(`Mail permission probe sent to ${userEmail}. MailApp quota before send: ${remainingQuotaBefore}.`);
   });
 
+  runPermissionCheck_(checks, 'Esborranys de Gmail i processos programats', () => {
+    const draft = GmailApp.createDraft(
+      userEmail,
+      'Permisos av_session: esborrany temporal',
+      'Aquest esborrany temporal només comprova els permisos del procés massiu.',
+      { name: 'Institut Ernest Lluch i Martín' }
+    );
+    draft.deleteDraft();
+    ScriptApp.getProjectTriggers();
+  });
+
   const listItems = checks.map(check => {
     const mark = check.ok ? 'OK' : 'ERROR';
     const detail = check.ok ? '' : `: ${escapeHtml_(check.message)}`;
@@ -156,6 +167,58 @@ function grantPermissionsManually() {
 
   return HtmlService.createHtmlOutput(
     `<p>Comprovació de permisos per a ${escapeHtml_(userEmail)}.</p><ul>${listItems}</ul>`
+  )
+    .setTitle('Sessió d\'avaluació')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function grantBulletinReplacementPermissions() {
+  let probeFile = null;
+  let phase = 'crear un fitxer temporal a Drive';
+  try {
+    probeFile = DriveApp.createFile(
+      `av_session_replacement_permission_${Date.now()}.txt`,
+      'Temporary Drive permission check for bulletin replacement.'
+    );
+    phase = 'recuperar el fitxer temporal per ID';
+    const fileById = DriveApp.getFileById(probeFile.getId());
+    phase = 'canviar els permisos del fitxer temporal';
+    probeFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    phase = 'moure el fitxer temporal a la paperera';
+    fileById.setTrashed(true);
+    if (!fileById.isTrashed()) {
+      throw new Error('Drive no ha confirmat que es pugui enviar un fitxer a la paperera.');
+    }
+  } catch (error) {
+    try {
+      if (probeFile) probeFile.setTrashed(true);
+    } catch (ignoredError) {
+      // The original authorization error is the useful result.
+    }
+    throw new Error(`No s'han pogut concedir o verificar els permisos de Drive en el pas «${phase}»: ${error.message || error}`);
+  }
+
+  return HtmlService.createHtmlOutput(
+    '<p>Permisos de Drive per regenerar butlletins concedits correctament.</p>'
+  )
+    .setTitle('Sessió d\'avaluació')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function authorizeAvSessionDriveAccess() {
+  const authorization = ScriptApp.getAuthorizationInfo(ScriptApp.AuthMode.FULL);
+  if (authorization.getAuthorizationStatus() === ScriptApp.AuthorizationStatus.NOT_REQUIRED) {
+    return HtmlService.createHtmlOutput(
+      '<p>El projecte ja té tots els permisos OAuth sol·licitats.</p>'
+    )
+      .setTitle('Sessió d\'avaluació')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
+  const authorizationUrl = authorization.getAuthorizationUrl();
+  return HtmlService.createHtmlOutput(
+    `<p>Cal autoritzar els permisos complets d'av_session, inclòs Drive.</p>` +
+    `<p><a href="${escapeHtml_(authorizationUrl)}" target="_blank" rel="noopener">Autoritzar av_session</a></p>`
   )
     .setTitle('Sessió d\'avaluació')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
@@ -500,6 +563,43 @@ function generateClosedBulletin(payload) {
   return result;
 }
 
+function regenerateClosedBulletin(payload) {
+  return replaceClosedBulletinV2(payload);
+}
+
+function replaceClosedBulletinV2(payload) {
+  return withClosedContext_(payload, context => {
+    const target = findClosedTutoriaTarget_(context, payload);
+    if (!target.bulletinUrl) {
+      throw new Error('No hi ha cap butlletí existent per tornar a generar.');
+    }
+
+    try {
+      overwriteClosedBulletinPdf_(context, target);
+      return {
+        studentAccountId: target.studentAccountId,
+        studentFullName: target.studentFullName,
+        bulletinUrl: target.bulletinUrl,
+        replacementVersion: 'v72',
+        replacementMode: 'overwritten',
+        oldFileTrashed: false,
+        replacementWarning: ''
+      };
+    } catch (overwriteError) {
+      const replacement = generateAndStoreClosedBulletin_(context, target, target.bulletinUrl);
+      replacement.replacementVersion = 'v72';
+      replacement.replacementMode = 'new-file';
+      if (replacement.replacementWarning) {
+        replacement.replacementWarning = [
+          replacement.replacementWarning,
+          `No s'ha pogut sobreescriure el PDF existent: ${overwriteError.message || overwriteError}`
+        ].filter(Boolean).join(' ');
+      }
+      return replacement;
+    }
+  });
+}
+
 function generateMissingClosedBulletins(payload) {
   return withClosedContext_(payload, context => {
     const generated = [];
@@ -526,6 +626,38 @@ function sendClosedBulletinEmail(payload) {
   return withClosedContext_(payload, context => {
     const target = findClosedTutoriaTarget_(context, payload);
     return sendClosedBulletinEmailForRow_(context, target);
+  });
+}
+
+function getClosedBulletinContacts(payload) {
+  return withClosedContext_(payload, context => {
+    const target = findClosedTutoriaTarget_(context, payload);
+    return {
+      studentAccountId: target.studentAccountId,
+      studentFullName: target.studentFullName,
+      bulletinUrl: target.bulletinUrl,
+      contacts: getClosedBulletinContactsForRow_(target)
+    };
+  });
+}
+
+function resendClosedBulletinEmail(payload) {
+  return withClosedContext_(payload, context => {
+    const target = findClosedTutoriaTarget_(context, payload);
+    const selectedContactKeys = (payload && payload.contacts || [])
+      .map(value => String(value || '').trim())
+      .filter(Boolean);
+    if (!selectedContactKeys.length) {
+      throw new Error('Cal seleccionar almenys un contacte.');
+    }
+
+    const contacts = getClosedBulletinContactsForRow_(target)
+      .filter(contact => selectedContactKeys.includes(contact.key));
+    if (!contacts.length) {
+      throw new Error('No s\'han trobat els contactes seleccionats.');
+    }
+
+    return sendClosedBulletinEmailForRow_(context, target, contacts);
   });
 }
 
@@ -758,7 +890,7 @@ function findClosedTutoriaTarget_(context, payload) {
   return row;
 }
 
-function generateAndStoreClosedBulletin_(context, tutoriaRow) {
+function generateAndStoreClosedBulletin_(context, tutoriaRow, replacedBulletinUrl) {
   const reportData = buildStudentReportDataFromSheets_(context, tutoriaRow);
   const html = buildStudentReportHtml_(reportData);
   const fileName = buildStudentReportFileName_(tutoriaRow.studentFullName, context.evaluation.name);
@@ -769,20 +901,155 @@ function generateAndStoreClosedBulletin_(context, tutoriaRow) {
   const file = folder.createFile(pdfBlob);
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
 
-  updateTutoriaCells_(context.gradesSpreadsheet, context.evaluation.sheetName, tutoriaRow.sheetRow, {
-    'Butlletí_url': file.getUrl()
-  });
+  let bulletinUrl;
+  let oldFileTrashed = false;
+  let replacementWarning = '';
+  if (replacedBulletinUrl) {
+    bulletinUrl = writeClosedBulletinUrl_(context, tutoriaRow, file.getUrl());
+    try {
+      trashClosedBulletinFile_(replacedBulletinUrl);
+      oldFileTrashed = true;
+    } catch (error) {
+      replacementWarning = `S'ha generat el nou butlletí, però no s'ha pogut eliminar l'anterior de Drive: ${error.message || error}`;
+    }
+  } else {
+    bulletinUrl = writeClosedBulletinUrl_(context, tutoriaRow, file.getUrl());
+  }
 
   return {
     studentAccountId: tutoriaRow.studentAccountId,
     studentFullName: tutoriaRow.studentFullName,
-    bulletinUrl: file.getUrl()
+    bulletinUrl,
+    replacementVersion: 'v72',
+    oldFileTrashed,
+    replacementWarning
   };
 }
 
+function overwriteClosedBulletinPdf_(context, tutoriaRow) {
+  const fileId = extractDriveFileId_(tutoriaRow.bulletinUrl);
+  if (!fileId) {
+    throw new Error('No s\'ha pogut identificar el fitxer de Drive del butlletí actual.');
+  }
+
+  const reportData = buildStudentReportDataFromSheets_(context, tutoriaRow);
+  const html = buildStudentReportHtml_(reportData);
+  const pdfBlob = Utilities.newBlob(html, MimeType.HTML, 'butlleti.html')
+    .getAs(MimeType.PDF)
+    .setName(buildStudentReportFileName_(tutoriaRow.studentFullName, context.evaluation.name));
+  const response = UrlFetchApp.fetch(
+    `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(fileId)}` +
+      '?uploadType=media&supportsAllDrives=true',
+    {
+      method: 'patch',
+      contentType: MimeType.PDF,
+      payload: pdfBlob.getBytes(),
+      headers: { Authorization: `Bearer ${ScriptApp.getOAuthToken()}` },
+      muteHttpExceptions: true
+    }
+  );
+  const status = response.getResponseCode();
+  if (status >= 200 && status < 300) return;
+
+  let detail = response.getContentText();
+  try {
+    const body = JSON.parse(detail);
+    detail = body && body.error && body.error.message ? body.error.message : detail;
+  } catch (ignoredError) {
+    // The raw API response is the best available diagnostic.
+  }
+  throw new Error(detail || `HTTP ${status}`);
+}
+
+function writeClosedBulletinUrl_(context, tutoriaRow, bulletinUrl) {
+  const sheet = getRequiredSheet_(context.gradesSpreadsheet,
+    `${context.evaluation.sheetName}${TUTORIA_SHEET_SUFFIX}`);
+  const headers = readTutoriaHeaders_(sheet);
+  const indexes = getTutoriaColumnIndexes_(headers);
+  const sheetRow = findTutoriaStudentRow_(
+    sheet,
+    indexes,
+    context.selectedGroup,
+    tutoriaRow.studentFullName,
+    tutoriaRow.studentAccountId
+  );
+  const bulletinColumn = getOrCreateTutoriaColumnIndex_(
+    sheet,
+    headers,
+    buildHeaderIndexMap_(headers),
+    'Butlletí_url'
+  );
+  const cell = sheet.getRange(sheetRow, bulletinColumn + 1);
+  cell.setValue(bulletinUrl);
+  SpreadsheetApp.flush();
+
+  const storedUrl = String(cell.getValue() || '').trim();
+  if (storedUrl !== bulletinUrl) {
+    throw new Error('No s\'ha pogut actualitzar l\'enllaç del butlletí al full de tutoria.');
+  }
+  return storedUrl;
+}
+
+function trashClosedBulletinFile_(bulletinUrl) {
+  const fileId = extractDriveFileId_(bulletinUrl);
+  if (!fileId) {
+    throw new Error('No s\'ha pogut identificar el fitxer de Drive del butlletí actual.');
+  }
+
+  try {
+    const file = DriveApp.getFileById(fileId);
+    file.setTrashed(true);
+    if (!file.isTrashed()) {
+      throw new Error('Drive no ha confirmat l\'eliminació del fitxer.');
+    }
+    return;
+  } catch (error) {
+    try {
+      trashDriveFileViaApi_(fileId);
+      return;
+    } catch (apiError) {
+      throw new Error(
+        `No s'ha pogut eliminar el butlletí actual de Drive: ${error.message || error}. ` +
+        `La segona comprovació amb l'API de Drive també ha fallat: ${apiError.message || apiError}`
+      );
+    }
+  }
+}
+
+function trashDriveFileViaApi_(fileId) {
+  const response = UrlFetchApp.fetch(
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?supportsAllDrives=true`,
+    {
+      method: 'patch',
+      contentType: 'application/json',
+      payload: JSON.stringify({ trashed: true }),
+      headers: { Authorization: `Bearer ${ScriptApp.getOAuthToken()}` },
+      muteHttpExceptions: true
+    }
+  );
+  const status = response.getResponseCode();
+  if (status >= 200 && status < 300) return;
+
+  let detail = response.getContentText();
+  try {
+    const body = JSON.parse(detail);
+    detail = body && body.error && body.error.message ? body.error.message : detail;
+  } catch (ignoredError) {
+    // The raw API response is the best available diagnostic.
+  }
+  throw new Error(detail || `HTTP ${status}`);
+}
+
+function extractDriveFileId_(url) {
+  const value = String(url || '').trim();
+  const match = value.match(/\/d\/([A-Za-z0-9_-]+)/) || value.match(/[?&]id=([A-Za-z0-9_-]+)/);
+  return match ? match[1] : '';
+}
+
 function buildStudentReportDataFromSheets_(context, tutoriaRow) {
-  const sheet = getRequiredSheet_(context.gradesSpreadsheet, context.evaluation.sheetName);
-  const table = readEvaluationTable_(sheet);
+  const table = context.evaluationTable || readEvaluationTable_(
+    getRequiredSheet_(context.gradesSpreadsheet, context.evaluation.sheetName)
+  );
   const rows = table.rows
     .filter(row => rowIncludesGroup_(row, context.selectedGroup))
     .filter(row => rowMatchesStudent_(row, tutoriaRow.studentFullName, tutoriaRow.studentAccountId))
@@ -824,44 +1091,72 @@ function getOrCreateChildFolder_(parent, name) {
   return folders.hasNext() ? folders.next() : parent.createFolder(name);
 }
 
-function sendClosedBulletinEmailForRow_(context, tutoriaRow) {
+function sendClosedBulletinEmailForRow_(context, tutoriaRow, requestedContacts) {
   if (!tutoriaRow.bulletinUrl) {
     throw new Error('Cal generar els documents abans d\'enviar-los.');
   }
 
-  const contacts = readFirstStudentContacts_(tutoriaRow.studentAccountId)
-    .filter(contact => contact.email)
-    .slice(0, 2);
+  const contacts = requestedContacts || getClosedBulletinContactsForRow_(tutoriaRow);
   if (!contacts.length) {
     throw new Error(`No s'han trobat correus de contacte per a ${tutoriaRow.studentFullName}.`);
   }
 
   const email = buildBulletinEmail_(context, tutoriaRow);
+  const testEmail = getAvBulletinTestEmail_();
   contacts.forEach(contact => {
-    MailApp.sendEmail({
-      to: contact.email,
-      subject: email.subject,
-      htmlBody: email.htmlBody,
-      name: 'Institut Ernest Lluch i Martín'
-    });
+    const deliveryEmail = testEmail || contact.email;
+    const testPrefix = testEmail ? `[PROVA per a ${contact.email}] ` : '';
+    GmailApp.createDraft(
+      deliveryEmail,
+      `${testPrefix}${email.subject}`,
+      buildAvBulletinTextBody_(context.evaluation, tutoriaRow, tutoriaRow.bulletinUrl, 'Enviament individual'),
+      {
+        htmlBody: email.htmlBody,
+        name: 'Institut Ernest Lluch i Martín'
+      }
+    ).send();
   });
 
   const updates = {};
-  if (contacts[0]) {
-    updates.email_1 = contacts[0].email;
-    updates.enviat_email_1 = buildSentMarker_(contacts[0]);
+  if (!testEmail) {
+    contacts.forEach(contact => {
+      if (contact.slot === 1) {
+        updates.email_1 = contact.email;
+        updates.enviat_email_1 = buildSentMarker_(contact);
+      }
+      if (contact.slot === 2) {
+        updates.email_2 = contact.email;
+        updates.enviat_email_2 = buildSentMarker_(contact);
+      }
+    });
   }
-  if (contacts[1]) {
-    updates.email_2 = contacts[1].email;
-    updates.enviat_email_2 = buildSentMarker_(contacts[1]);
+  if (Object.keys(updates).length) {
+    updateTutoriaCells_(context.gradesSpreadsheet, context.evaluation.sheetName, tutoriaRow.sheetRow, updates);
   }
-  updateTutoriaCells_(context.gradesSpreadsheet, context.evaluation.sheetName, tutoriaRow.sheetRow, updates);
 
   return {
     studentAccountId: tutoriaRow.studentAccountId,
     studentFullName: tutoriaRow.studentFullName,
-    sentCount: contacts.length
+    sentCount: contacts.length,
+    testEmail
   };
+}
+
+function getClosedBulletinContactsForRow_(tutoriaRow) {
+  return readFirstStudentContacts_(tutoriaRow.studentAccountId)
+    .filter(contact => contact.email)
+    .map((contact, index) => {
+      const slot = index + 1;
+      const storedEmail = slot === 1 ? tutoriaRow.email1 : tutoriaRow.email2;
+      const sentMarker = slot === 1 ? tutoriaRow.sentEmail1 : tutoriaRow.sentEmail2;
+      return Object.assign({}, contact, {
+        slot,
+        key: contact.id || `${slot}:${contact.email}`,
+        sent: Boolean(sentMarker),
+        sentMarker: String(sentMarker || ''),
+        storedEmail: String(storedEmail || '')
+      });
+    });
 }
 
 function buildBulletinEmail_(context, tutoriaRow) {

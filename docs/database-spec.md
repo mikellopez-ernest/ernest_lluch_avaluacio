@@ -45,8 +45,8 @@ const tablesSheet = registrySpreadsheet.getSheetByName('tables');
 | `Dades de professors` | `Llista`, `leave_absence` |
 | `Càrrega lectiva` | `assignatures`, `carrecs` |
 | `Horaris` | `GPU001` |
-| `Dinantia` | `dinantia_2_dades_alumnes`, `teachers_2_dinantia` |
-| `Grades` | `subjects_cache`, `avaluacions`, generated evaluation sheets, generated evaluation config sheets, generated tutoria sheets, generated tutorial-group comment sheets |
+| `Dinantia` | `dinantia_2_dades_alumnes`, `teachers_2_dinantia`, `contacts_cache` |
+| `Grades` | `subjects_cache`, `avaluacions`, generated evaluation/config/tutoria/tutorial-group sheets, and global `av_session` batch/audit sheets |
 
 The old `Grades` -> `subjects` table is obsolete and must not be used for the new configuration workflow.
 
@@ -64,7 +64,7 @@ Row 1 contains headers. Data starts in row 2.
 
 | Column | Header | Meaning |
 | --- | --- | --- |
-| A | `ESP` | Original teacher code. Used by `leave_absence.teacher_code`. |
+| A | `ESP` | Legacy/original teacher code. It is not used by the current endpoint substitution join. |
 | B | `DEPT.` | Department code. |
 | C | `NOM` | First name. |
 | D | `COGNOM1` | First surname. |
@@ -86,7 +86,8 @@ Row 1 contains headers. Data starts in row 2.
 
 `REDUIT` / `REDUÏT` is the short teacher code used by normal application, timetable, and substitution operations.
 
-`ESP` is the original teacher code used by `leave_absence.teacher_code`.
+`ESP` is retained as teacher metadata. Current endpoint substitution resolution
+does not join leave rows through this field.
 
 Teacher full names are built from:
 
@@ -135,7 +136,7 @@ Row 1 contains headers. Data starts in row 2.
 | Column | Header | Meaning |
 | --- | --- | --- |
 | A | `row_id` | Original row number in `Llista`. |
-| B | `teacher_code` | Original teacher `ESP` from `Llista` column A. |
+| B | `teacher_code` | Main/original teacher `REDUIT` / `REDUÏT` from `Llista` column F. |
 | C | `substitute_code` | Substitute teacher `REDUIT` / `REDUÏT` from `Llista` column F. |
 | D | `start_date` | Leave start date. |
 | E | `end_date` | Leave end date. Blank means the leave is still active. |
@@ -143,11 +144,9 @@ Row 1 contains headers. Data starts in row 2.
 
 ### Leave/Substitute Rules
 
-`leave_absence.teacher_code` must store the original teacher's `ESP`.
-
-`leave_absence.substitute_code` must store the substitute teacher's `REDUIT` / `REDUÏT`.
-
-Do not store the substitute as `ESP`.
+Both `leave_absence.teacher_code` and `leave_absence.substitute_code` use
+`Llista.REDUIT` / `Llista.REDUÏT`. The first identifies the main teacher and the
+second identifies the acting substitute. Do not join either field to `ESP`.
 
 A leave is active when the relevant date is between the start and end dates, inclusive:
 
@@ -159,18 +158,30 @@ If `end_date` is blank, treat the leave as still active.
 
 For schedule and timetable applications, the relevant date is usually today in timezone `Europe/Madrid`.
 
+When an endpoint starts from a logged-in teacher whose `SUBST?` value is true:
+
+1. Match the acting teacher's `Llista.REDUIT` / `Llista.REDUÏT` to
+   `leave_absence.substitute_code`.
+2. Keep only a leave active today in `Europe/Madrid`.
+3. Read `leave_absence.teacher_code` and match it back to the main teacher's
+   `Llista.REDUIT` / `Llista.REDUÏT`.
+4. Use the main teacher's full name for responsibility lookup while retaining
+   the logged-in substitute as the acting user.
+5. Fail clearly if no active leave or main teacher can be resolved; do not guess
+   which responsibilities the substitute represents.
+
 When resolving the effective teacher for a timetable row:
 
 1. Read the scheduled teacher code from `Horaris` -> `GPU001` column C.
 2. Match it to `Llista.REDUIT` / `Llista.REDUÏT`.
-3. Read the matched teacher's `ESP`.
-4. Search active rows in `leave_absence`.
-5. Match `leave_absence.teacher_code` against the original teacher's `ESP`.
-6. If an active leave exists, read `leave_absence.substitute_code`.
-7. Match the substitute code to `Llista.REDUIT` / `Llista.REDUÏT`.
-8. Use the substitute as the effective teacher.
-9. If no active leave exists, keep the original scheduled teacher.
-10. If substitute data is invalid or missing, keep the original scheduled teacher and do not break the application.
+3. Search active rows in `leave_absence`.
+4. Match `leave_absence.teacher_code` against that teacher's `REDUIT` /
+   `REDUÏT`.
+5. If an active leave exists, read `leave_absence.substitute_code`.
+6. Match the substitute code to `Llista.REDUIT` / `Llista.REDUÏT`.
+7. Use the substitute as the effective teacher.
+8. If no active leave exists, keep the original scheduled teacher.
+9. If substitute data is invalid or missing, keep the original scheduled teacher and do not break the application.
 
 ## Table: Càrrega Lectiva
 
@@ -346,6 +357,31 @@ The configuration endpoint maps these visible Dinantia group values to local
 `subjects_cache.group` codes through the aligned `subjects_cache.group_name`
 values.
 
+### Sheet: contacts_cache
+
+`contacts_cache` stores local contact snapshots used by closed-evaluation
+bulletin delivery. `av_session` reads this sheet and does not call the Dinantia
+API while sending.
+
+Required headers:
+
+| Header | Meaning |
+| --- | --- |
+| `student_id` | Dinantia student account ID; joins to `{sheet_name}_tutoria.student_account_id`. |
+| `student_name` | Student display name. |
+| `group_name` | Contact cache group value. Informational for bulletin sending. |
+| `contact_id` | Dinantia contact identifier. |
+| `contact_position` | Contact order. Lower numeric positions are selected first. |
+| `contact_name` | Contact display name. |
+| `contact_email` | Delivery address. Blank addresses are ignored. |
+| `contact_phone` | Contact telephone. Not used for bulletin email. |
+
+For bulletin delivery, rows are matched by exact trimmed `student_id`, sorted
+by numeric `contact_position`, and limited to the first two contact rows. A
+blank `contact_email` in either selected row is ignored; it does not cause a
+later contact to replace that position. The stable relation is the account ID;
+student names must not be used as the primary join.
+
 ### subjects_cache Post-Processing Rules
 
 After all substitutions are resolved:
@@ -395,7 +431,26 @@ Tancada
 
 When a new evaluation is created, `Estat` must be set to `Creada`.
 
-If an existing header is named `sheet_id`, treat it as a naming error for this workflow and migrate it to `sheet_name` before implementation.
+`sheet_name` is the canonical header. Existing readers may accept legacy
+`sheet_id` as a fallback. The configuration writer repairs column C to
+`sheet_name` when it registers a new evaluation; consumers must not create new
+`sheet_id` headers.
+
+#### Evaluation State Contract
+
+No endpoint automatically advances `Estat`; changing state is an explicit
+administrative workflow outside the three endpoint UIs. The applications
+consume the state as follows:
+
+| `Estat` | `configuration` | `teacher_pannel` | `av_session` |
+| --- | --- | --- | --- |
+| `Creada` | Initial value written at creation. | Not selectable. | Not selectable; if every registered evaluation is `Creada`, show the not-started error. |
+| `Avaluació professors` | Registry only. | Grades are editable for owned rows; property admins may edit all rows. | Student/subject views are available, grade controls are disabled, and `Comentari_tutor` is editable. |
+| `Mode junta` | Registry only. | Not selectable. | Grades, `Comentari_tutor`, and `Comentari_grup` are editable. |
+| `Tancada` | Registry only. | Not selectable. | Grading UI is replaced by bulletin status, document generation, exports, and email delivery. |
+
+State spelling is exact. The canonical closed value is `Tancada`, never
+`Tancat`.
 
 ### Sheet: subjects_cache
 
@@ -591,6 +646,22 @@ spreadsheet: `{sheet_name}`, `{sheet_name}_config`,
 of them, the configuration endpoint must verify that none of the four names
 already exists. Existing evaluations are not migrated automatically.
 
+### Group Identity Across Applications
+
+The project has three related group fields that are not interchangeable:
+
+| Field | Meaning | Primary consumer |
+| --- | --- | --- |
+| `subjects_cache.group` / generated `group` | Local timetable/configuration group code or comma-separated code array, for example `4A,4B`. | `configuration` |
+| `subjects_cache.group_name` / generated `group_name` | Aligned Dinantia display membership copied from cache; may also be comma-separated. | `teacher_pannel` |
+| generated `grup_tutoria` | Final tutorial-group identity assigned per student from the key/tutoria row. | `av_session` |
+
+The configuration app maps responsibility-visible Dinantia values back to local
+`group` codes. The teacher panel builds its group selector from `group_name`.
+The evaluation-session app filters students, subjects, comments, exports, and
+closed bulletins by `grup_tutoria`. A consumer must split comma-separated
+members and compare complete normalized members; substring matching is invalid.
+
 ### Evaluation Registry Row
 
 Append one row to `Grades` -> `avaluacions`:
@@ -739,6 +810,20 @@ Tutoria sheet columns:
 | J | `Comentari_tutor` | Blank at creation time. Reserved for tutor comments. |
 | K | `Butlletí_url` | Blank at creation time. Reserved for bulletin/report URL. |
 
+Columns A-K are the base schema created by `configuration`. The evaluation
+session may append these operational email columns on first write when they are
+missing:
+
+| Appended header | Meaning |
+| --- | --- |
+| `email_1` | First intended contact email. |
+| `enviat_email_1` | Timestamp/address marker for the first successful production delivery. |
+| `email_2` | Second intended contact email. |
+| `enviat_email_2` | Timestamp/address marker for the second successful production delivery. |
+
+Readers must resolve these fields by header, not fixed letters. Test deliveries
+must not populate the production email or send-marker columns.
+
 The tutoria sheet must be written in bulk and formatted after writing:
 
 1. Freeze the header row.
@@ -806,6 +891,43 @@ The sheet must be written in bulk and formatted after writing:
 
 Do not call Dinantia once per `subjects_cache` row. Do not depend on `groups/view/:id` containing member lists.
 
+### Global Evaluation-Session Job Sheets
+
+The evaluation-session batch worker owns three global sheets in `Grades`. They
+are not tied to one `{sheet_name}` and are not created by evaluation creation.
+`av_session` creates or repairs them when batch infrastructure is initialized;
+repair appends missing headers without deleting existing data.
+
+`av_session_jobs` headers:
+
+```text
+job_id, job_type, status, evaluation_sheet, evaluation_name, scope,
+requested_group, requested_by, created_at, started_at, finished_at,
+heartbeat_at, total_items, pending_items, processed_items, success_items,
+skipped_items, failed_items, needs_review_items, current_group,
+current_student, remaining_quota, test_email, last_error, updated_at
+```
+
+`av_session_job_items` headers:
+
+```text
+item_id, job_id, sequence, status, evaluation_sheet, evaluation_name,
+group_name, tutoria_row, student_account_id, student_full_name,
+contact_position, contact_id, contact_name, intended_email, delivery_email,
+bulletin_url, draft_id, message_id, dispatch_token, attempt_count, last_error,
+next_attempt_at, created_at, started_at, finished_at, updated_at
+```
+
+`av_session_job_events` headers:
+
+```text
+timestamp, job_id, item_id, event_type, status, actor, message, details_json
+```
+
+These sheets contain operational and personal delivery data. Access to the
+`Grades` spreadsheet and exported audits must remain restricted to authorized
+staff.
+
 ## Implementation Requirements
 
 Detailed configuration endpoint behavior is specified in
@@ -837,7 +959,6 @@ Use `normalizeCode` for joins involving:
 
 | Field |
 | --- |
-| `Llista.ESP` |
 | `Llista.REDUIT` / `Llista.REDUÏT` |
 | `leave_absence.teacher_code` |
 | `leave_absence.substitute_code` |
@@ -870,8 +991,8 @@ For leave calculations:
 | Use case | Field |
 | --- | --- |
 | Normal teacher operations | `Llista.REDUIT` / `Llista.REDUÏT` |
-| Matching original teachers in leave records | `Llista.ESP` |
-| Substitute teacher stored in leave records | `leave_absence.substitute_code` as `REDUIT` / `REDUÏT` |
+| Matching main teachers in leave records | `leave_absence.teacher_code` as `REDUIT` / `REDUÏT` |
+| Matching substitute teachers in leave records | `leave_absence.substitute_code` as `REDUIT` / `REDUÏT` |
 | Stable subject code | `assignatures.short_name` |
 | Display subject name | `assignatures.full_name` |
 | Timetable source group | `GPU001` column B |
