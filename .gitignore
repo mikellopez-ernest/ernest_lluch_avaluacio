@@ -36,3 +36,6 @@ yarn-error.log*
 .idea/
 .vscode/
 *.swp
+
+# Local student import workbooks (may contain personal data)
+scripts/pendents_config/*.xlsx

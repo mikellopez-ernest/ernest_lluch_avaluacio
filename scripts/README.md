@@ -11,6 +11,7 @@ Script-specific `.clasp.json` files stay inside their own folder so each script 
 | `configuration` | Configuration endpoint for `subjects_cache` and evaluation creation. |
 | `teacher_pannel` | Teacher-facing endpoint for generated evaluation sheets. |
 | `av_session` | Evaluation session workflow script. |
+| `pendents_config` | Subject configuration and student XLSX imports with matching and review. |
 
 Canonical contracts and their ownership order are indexed in
 [`docs/README.md`](../docs/README.md). Each script README is an operational

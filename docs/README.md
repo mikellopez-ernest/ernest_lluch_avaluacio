@@ -14,7 +14,7 @@ When documents overlap, ownership is resolved in this order:
 4. Script READMEs are concise operational summaries and must not override a
    canonical spec.
 
-All three scripts are web apps. Routine releases must update each app's existing
+All scripts are web apps. Routine releases must update each app's existing
 deployment so its public URL remains unchanged. Deployment IDs stay private and
 must not be written into these documents.
 
@@ -27,6 +27,7 @@ must not be written into these documents.
 | [Dinantia API Specification](dinantia-api-spec.md) | Dinantia authentication, pagination, groups, accounts, and integration rules. |
 | [Teacher Panel Endpoint Specification](teacher-pannel-spec.md) | Teacher-facing evaluation UI, filtering, dirty saves, and generated-sheet consumption. |
 | [Evaluation Session Endpoint Specification](av-session-spec.md) | Session-mode evaluation UI, group visibility, generated-sheet student loading, dirty saves, XLSX acta exports, PDF bulletins, and bulletin email sending. |
+| [Pendents Configuration Endpoint Specification](pendents-config-spec.md) | Assignatures and Alumnes tabs, subject configuration, student XLSX matching, review, saves, and deployment. |
 
 ## Operational Guides
 

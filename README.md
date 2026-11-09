@@ -13,7 +13,8 @@ This repository contains Google Apps Script projects organized by script.
 │   ├── configuration-endpoint-spec.md
 │   ├── database-spec.md
 │   ├── dinantia-api-spec.md
-│   └── teacher-pannel-spec.md
+│   ├── teacher-pannel-spec.md
+│   └── pendents-config-spec.md
 ├── scripts/
 │   ├── av_session/
 │   │   ├── .clasp.json
@@ -33,6 +34,14 @@ This repository contains Google Apps Script projects organized by script.
 │   │       └── appsscript.json
 │   ├── configuration/
 │   │   ├── .clasp.json
+│   │   ├── .claspignore
+│   │   ├── README.md
+│   │   └── src/
+│   │       ├── Code.js
+│   │       ├── Index.html
+│   │       └── appsscript.json
+│   ├── pendents_config/
+│   │   ├── .clasp.json (local, ignored)
 │   │   ├── .claspignore
 │   │   ├── README.md
 │   │   └── src/
@@ -59,6 +68,7 @@ This repository contains Google Apps Script projects organized by script.
 | av_session | `scripts/av_session` |
 | configuration | `scripts/configuration` |
 | teacher_pannel | `scripts/teacher_pannel` |
+| pendents_config | `scripts/pendents_config` |
 
 Apps Script project IDs are intentionally not stored in public documentation.
 Keep them only in each local, ignored `.clasp.json` file.

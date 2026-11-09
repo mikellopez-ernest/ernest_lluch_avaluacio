@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Configuració de pendents</title>
+  <style>
+    :root { color-scheme: light; font-family: Inter, system-ui, sans-serif; color: #182b45; background: #f3f5f8; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { height: 100dvh; max-width: 1440px; margin: auto; padding: 32px 40px 20px; display: flex; flex-direction: column; gap: 22px; }
+    header p { margin: 8px 0 0; color: #617188; font-size: 14px; }
+    .eyebrow { color: #416c9a; font-size: 11px; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; }
+    h1 { font-size: 28px; letter-spacing: -.7px; margin: 6px 0 0; font-weight: 650; }
+    .filters { display: flex; gap: 20px; align-items: end; }
+    label { display: grid; gap: 7px; font-size: 12px; font-weight: 650; }
+    .filters select { min-width: 210px; }
+    select, input, textarea { width: 100%; background: white; border: 1px solid #dce2e9; border-radius: 7px; padding: 9px 11px; font: inherit; color: inherit; min-height: 40px; }
+    select:focus, input:focus, textarea:focus, button:focus-visible { outline: 3px solid #a8c9f2; outline-offset: 2px; }
+    select:disabled { color: #8793a3; background: #edf0f4; cursor: not-allowed; }
+    .table-card { min-height: 0; flex: 1; background: white; border: 1px solid #dce2e9; border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; }
+    .table-title { padding: 16px 20px; display: flex; gap: 12px; align-items: center; border-bottom: 1px solid #e7ebf0; font-size: 14px; font-weight: 650; }
+    #count, #studentCount { color: #718096; font-size: 12px; font-weight: 400; }
+    .scroll { overflow: auto; flex: 1; min-height: 0; }
+    table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; min-width: 850px; font-size: 13px; }
+    th { position: sticky; top: 0; background: #f8fafc; z-index: 1; text-align: left; color: #607087; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid #e7ebf0; padding: 13px 16px; }
+    td { padding: 10px 16px; border-bottom: 1px solid #edf0f4; }
+    td select, td input { font-size: 13px; }
+    tr:last-child td { border-bottom: 0; }
+    th:first-child { width: 68px; padding: 13px 6px; text-align: center; } th:nth-child(2) { width: 44px; } th:nth-child(3) { width: 20%; } th:nth-child(4) { width: 40%; }
+    td.criteria-cell { padding: 6px; text-align: center; }
+    button.notebook { padding: 7px; width: 36px; height: 36px; display: inline-grid; place-items: center; color: #607087; }
+    button.notebook.has-criteria { background: #eaf2fc; color: #255b97; border-color: #aac5e4; }
+    .notebook svg { width: 19px; height: 19px; }
+    dialog { border: 1px solid #dce2e9; border-radius: 14px; padding: 26px; width: min(640px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; color: #182b45; box-shadow: 0 20px 70px #172b4533; }
+    dialog::backdrop { background: #172b4580; }
+    dialog h2 { font-size: 21px; margin: 0 0 8px; }
+    dialog p { color: #617188; font-size: 13px; }
+    dialog textarea { margin-top: 8px; font-size: 14px; line-height: 1.6; min-height: 240px; resize: vertical; }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; }
+    #criteriaError { color: #b32d2e; }
+    th:last-child { width: 48px; }
+    td.audit-cell { text-align: center; padding: 6px; }
+    .audit-check { color: #278154; font-size: 20px; cursor: help; }
+    td.row-action { padding: 6px; }
+    button.delete-row { opacity: 0; pointer-events: none; border: 0; background: transparent; color: #b32d2e; padding: 6px; width: 30px; height: 32px; font-size: 22px; line-height: 1; }
+    tr:hover .delete-row, tr:focus-within .delete-row { opacity: 1; pointer-events: auto; }
+    @media (hover: none) { button.delete-row { opacity: 1; pointer-events: auto; } }
+    [hidden] { display: none !important; }
+    .empty { text-align: center; color: #758397; padding: 64px 20px; line-height: 1.7; }
+    footer { display: flex; align-items: center; gap: 12px; min-height: 54px; flex-shrink: 0; }
+    #status { margin-right: auto; font-size: 13px; color: #52657d; max-width: 55%; }
+    #status.error { color: #b32d2e; }
+    button { border: 1px solid #ccd6e2; background: white; color: #24456b; border-radius: 8px; padding: 11px 21px; font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; white-space: nowrap; }
+    button.primary { background: #255b97; color: white; border-color: #255b97; }
+    button:disabled { opacity: .45; cursor: default; }
+    #overlay { position: fixed; inset: 0; background: #f3f5f8c9; z-index: 10; display: grid; place-content: center; text-align: center; gap: 14px; }
+    #overlay[hidden] { display: none; }
+    .spinner { width: 28px; height: 28px; border: 3px solid #cedae7; border-top-color: #255b97; border-radius: 50%; animation: spin .8s linear infinite; margin: auto; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media(max-width: 700px) { main { padding: 20px 16px 12px; gap: 16px; } h1 { font-size: 23px; } .filters { gap: 12px; flex-wrap: wrap; } .filters label { flex: 1; } .filters select { min-width: 140px; } footer { flex-wrap: wrap; } #status { max-width: 100%; flex: 1 1 100%; } footer button { flex: 1; } }
+    @media(prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+    .tabs { display: flex; gap: 8px; border-bottom: 1px solid #dce2e9; }
+    .tabs button { border: 0; border-radius: 7px 7px 0 0; background: transparent; color: #617188; padding: 10px 18px; }
+    .tabs button[aria-selected="true"] { color: #255b97; background: #e8eff9; box-shadow: inset 0 -2px #255b97; }
+    .tab-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 18px; }
+    .students-table { min-width: 1050px; }
+    .students-table th { width: auto; text-align: left; padding: 13px 12px; }
+    .students-table th:nth-child(1) { width: 10%; } .students-table th:nth-child(2) { width: 26%; }
+    .students-table th:nth-child(3) { width: 24%; } .students-table th:nth-child(4) { width: 12%; }
+    .students-table th:nth-child(5) { width: 20%; } .students-table th:nth-child(6) { width: 8%; }
+    .students-table td { padding: 12px; overflow-wrap: anywhere; }
+    .student-filters label:first-child { flex: 1; } .student-filters input { min-width: 180px; }
+    .student-filters select { min-width: 140px; max-width: 340px; }
+    #studentStatus { margin-right: auto; font-size: 13px; color: #52657d; }
+    #studentStatus.error { color: #b32d2e; }
+    #studentImportDialog { width: min(1100px, calc(100vw - 32px)); }
+    .review-scroll { max-height: 48dvh; overflow: auto; border: 1px solid #e1e6ed; border-radius: 8px; }
+    .review-table { min-width: 900px; table-layout: auto; }
+    .review-table th { width: auto; padding: 10px; } .review-table td { padding: 10px; vertical-align: top; }
+    .review-table td:first-child { width: 22%; }
+    .review-table td:nth-child(3) { width: 65px; text-align: center; }
+    .review-table input { min-width: 200px; font-size: 12px; }
+    .review-table input[type="checkbox"] { min-width: 18px; min-height: 18px; width: 18px; height: 18px; }
+    .review-source { max-width: 220px; font-size: 12px; }
+    .review-issue { display: block; color: #a24525; font-size: 11px; margin-top: 5px; }
+    .review-pager { display: flex; gap: 12px; justify-content: space-between; align-items: center; margin-top: 12px; font-size: 13px; }
+    #studentImportError { color: #b32d2e; }
+  </style>
+</head>
+<body>
+  <main>
+    <header><span class="eyebrow">Avaluació · Pendents</span><h1>Configuració de pendents</h1><p>Organitza les assignatures i les matèries pendents de l’alumnat.</p></header>
+    <nav class="tabs" role="tablist" aria-label="Configuració de pendents">
+      <button id="subjectsTab" role="tab" aria-selected="true" aria-controls="subjectsPanel">Assignatures</button>
+      <button id="studentsTab" role="tab" aria-selected="false" aria-controls="studentsPanel" tabindex="-1">Alumnes</button>
+    </nav>
+    <div id="subjectsPanel" class="tab-panel" role="tabpanel" aria-labelledby="subjectsTab">
+    <section class="filters" aria-label="Filtres">
+      <label>Nivell<select id="levelFilter"><option value="">Tots els nivells</option></select></label>
+      <label>Departament<select id="departmentFilter"><option value="">Tots els departaments</option></select></label>
+    </section>
+    <section class="table-card" aria-label="Matèries pendents">
+      <div class="table-title">Matèries <span id="count"></span></div>
+      <div class="scroll"><table><thead><tr><th scope="col" title="Criteris de recuperació">Criteris</th><th scope="col" aria-label="Accions"></th><th scope="col">Nivell</th><th scope="col">Assignatura</th><th scope="col">Departament</th><th scope="col" aria-label="Últim canvi"></th></tr></thead><tbody id="rows"></tbody></table></div>
+    </section>
+    <footer><div id="status" role="status" aria-live="polite"></div><button id="newButton" disabled>Nova assignatura</button><button id="importButton" hidden disabled>Importar</button><button id="saveButton" class="primary" disabled>Desar</button></footer>
+    </div>
+    <div id="studentsPanel" class="tab-panel" role="tabpanel" aria-labelledby="studentsTab" hidden>
+      <section class="filters student-filters" aria-label="Filtres d’alumnes">
+        <label>Nom de l’alumne/a<input id="studentNameFilter" type="search" placeholder="Cerca per nom…" autocomplete="off"></label>
+        <label>Grup<select id="studentGroupFilter"><option value="">Tots els grups</option></select></label>
+        <label>Assignatura<select id="studentSubjectFilter"><option value="">Totes les assignatures</option></select></label>
+      </section>
+      <section class="table-card" aria-label="Alumnes amb matèries pendents">
+        <div class="table-title">Alumnes <span id="studentCount"></span></div>
+        <div class="scroll"><table class="students-table"><thead><tr><th scope="col">ID alumne</th><th scope="col">Alumne/a</th><th scope="col">Correu</th><th scope="col">Grup</th><th scope="col">Assignatura</th><th scope="col">Curs</th></tr></thead><tbody id="studentRows"></tbody></table></div>
+      </section>
+      <footer><div id="studentStatus" role="status" aria-live="polite"></div><button id="studentReload" disabled>Actualitzar</button><button id="studentImport" class="primary" data-can-import="<?= isAllowedUser_() ? 'true' : 'false' ?>" disabled>Importar XLSX</button><input id="studentFile" type="file" accept=".xlsx" hidden></footer>
+    </div>
+  </main>
+  <div id="overlay" hidden role="status" aria-live="polite"><div class="spinner"></div><div id="busyText">Carregant…</div></div>
+  <dialog id="criteriaDialog" aria-labelledby="criteriaTitle" aria-describedby="criteriaContext">
+    <h2 id="criteriaTitle">Criteris de recuperació</h2>
+    <p id="criteriaContext"></p>
+    <label for="criteriaText">Text dels criteris</label>
+    <textarea id="criteriaText" maxlength="50000" placeholder="Escriu els criteris de recuperació…"></textarea>
+    <p id="criteriaHint"></p>
+    <p id="criteriaError" role="alert" hidden></p>
+    <div class="dialog-actions"><button id="criteriaCancel" type="button">Cancel·lar</button><button id="criteriaSave" type="button" class="primary">Desar criteris</button></div>
+  </dialog>
+  <dialog id="studentImportDialog" aria-labelledby="studentImportTitle">
+    <h2 id="studentImportTitle">Revisió de la importació</h2>
+    <p id="studentImportSummary"></p>
+    <p id="studentImportHint">Revisa les files dubtoses. Escriu per cercar i selecciona una opció completa. Les correccions s’apliquen també a altres files dubtoses amb el mateix alumne i grup o la mateixa matèria i nivell.</p>
+    <div class="review-scroll"><table class="review-table"><thead><tr id="studentReviewHead"></tr></thead><tbody id="studentReviewRows"></tbody></table></div>
+    <div class="review-pager"><button id="reviewPrevious" type="button">Pàgina anterior</button><span id="reviewPage"></span><button id="reviewNext" type="button">Pàgina següent</button></div>
+    <datalist id="studentChoices"></datalist><datalist id="subjectChoices"></datalist>
+    <p id="studentImportError" role="alert" hidden></p>
+    <div class="dialog-actions"><button id="studentImportCancel" type="button">Cancel·lar</button><button id="studentImportConfirm" type="button" class="primary">Importar les files revisades</button></div>
+  </dialog>
+  <?!= HtmlService.createHtmlOutputFromFile('XlsxLibrary').getContent(); ?>
+  <script>
+    let state = { rows: [], levels: [], departments: [], revision: '', canImport: false };
+    let dirty = false;
+    let busy = false;
+    const body = document.getElementById('rows');
+    const filter = document.getElementById('levelFilter');
+    const departmentFilter = document.getElementById('departmentFilter');
+    const saveButton = document.getElementById('saveButton');
+    const importButton = document.getElementById('importButton');
+    const newButton = document.getElementById('newButton');
+    const status = document.getElementById('status');
+    const criteriaDialog = document.getElementById('criteriaDialog');
+    const criteriaText = document.getElementById('criteriaText');
+    const criteriaSave = document.getElementById('criteriaSave');
+    const criteriaCancel = document.getElementById('criteriaCancel');
+    const criteriaError = document.getElementById('criteriaError');
+    let criteriaRow = null;
+    let criteriaSaving = false;
+    let criteriaTrigger = null;
+
+    function openCriteria(row, trigger) {
+      criteriaRow = row;
+      criteriaTrigger = trigger;
+      criteriaText.value = row.criteris_recuperacio || '';
+      criteriaError.hidden = true;
+      document.getElementById('criteriaContext').textContent = row.nivell + ' · ' + (row.assignatura || 'Assignatura nova');
+      document.getElementById('criteriaHint').textContent = row.id
+        ? 'Desar criteris guarda aquest text al full. Els altres canvis de la taula es desen per separat.'
+        : 'Aquesta assignatura encara no està desada. Aplica el text i prem Desar a la taula per guardar-la.';
+      criteriaSave.textContent = row.id ? 'Desar criteris' : 'Aplicar';
+      criteriaDialog.showModal();
+      criteriaText.focus();
+    }
+    function closeCriteria() {
+      criteriaDialog.close();
+      criteriaRow = null;
+      if (criteriaTrigger && criteriaTrigger.isConnected) criteriaTrigger.focus();
+    }
+    criteriaCancel.addEventListener('click', closeCriteria);
+    criteriaDialog.addEventListener('cancel', event => {
+      event.preventDefault();
+      if (!criteriaSaving) closeCriteria();
+    });
+    criteriaSave.addEventListener('click', () => {
+      if (criteriaSaving || !criteriaRow) return;
+      const text = criteriaText.value;
+      const row = criteriaRow;
+      if (!row.id) {
+        row.criteris_recuperacio = text;
+        closeCriteria(); markDirty(); render(undefined, row);
+        setStatus('Criteris aplicats. Prem Desar per guardar l’assignatura nova.');
+        return;
+      }
+      criteriaSaving = true;
+      criteriaText.disabled = criteriaSave.disabled = criteriaCancel.disabled = true;
+      criteriaSave.textContent = 'Desant…';
+      criteriaError.hidden = true;
+      google.script.run.withSuccessHandler(result => {
+        row.criteris_recuperacio = result.criteris_recuperacio;
+        row.updated_by = result.updated_by; row.updated_at = result.updated_at; row.updated_by_name = result.updated_by_name;
+        state.revision = result.revision;
+        finishCriteriaSave(); closeCriteria(); render(undefined, row);
+        setStatus(dirty ? 'Criteris desats. Hi ha altres canvis pendents de desar.' : 'Criteris de recuperació desats');
+      }).withFailureHandler(error => {
+        finishCriteriaSave();
+        criteriaError.textContent = error.message || 'No s’han pogut desar els criteris.';
+        criteriaError.hidden = false;
+      }).savePendentsRecoveryCriteria({ id: row.id, criteris_recuperacio: text, revision: state.revision });
+    });
+    function finishCriteriaSave() {
+      criteriaSaving = false;
+      criteriaText.disabled = criteriaSave.disabled = criteriaCancel.disabled = false;
+      criteriaSave.textContent = 'Desar criteris';
+    }
+
+    function setStatus(message, error = false) { status.textContent = message; status.classList.toggle('error', error); }
+    function setBusy(value, message) {
+      busy = value;
+      document.getElementById('overlay').hidden = !value;
+      document.getElementById('busyText').textContent = message || '';
+      saveButton.disabled = value || !dirty;
+      importButton.disabled = value || !state.canImport;
+      newButton.disabled = value;
+      filter.disabled = value;
+      departmentFilter.disabled = value;
+    }
+    function fail(error) { setBusy(false); setStatus(error.message || 'No s’ha pogut completar l’operació.', true); }
+    function markDirty() { dirty = true; saveButton.disabled = busy; setStatus('Canvis pendents de desar'); }
+    function key(row) { return JSON.stringify([row.nivell, row.assignatura.trim().normalize('NFC').toLocaleLowerCase('ca')]); }
+    function makeSelect(options, value, label, onChange, allowBlank = true) {
+      const select = document.createElement('select');
+      select.setAttribute('aria-label', label);
+      if (allowBlank) select.add(new Option('Selecciona…', ''));
+      options.forEach(option => select.add(new Option(option, option)));
+      if (value && !options.includes(value)) { const option = new Option(value + ' (no actiu)', value); option.disabled = true; select.add(option); }
+      select.value = value;
+      select.addEventListener('change', () => onChange(select.value));
+      return select;
+    }
+    function refreshDepartmentFilter() {
+      const selected = departmentFilter.value;
+      const departments = Array.from(new Set(state.rows.map(row => (row.departament || '').trim()).filter(Boolean)))
+        .sort((a, b) => a.localeCompare(b, 'ca'));
+      departmentFilter.replaceChildren(new Option('Tots els departaments', ''));
+      departments.forEach(department => departmentFilter.add(new Option(department, department)));
+      departmentFilter.value = departments.includes(selected) ? selected : '';
+    }
+    function render(focusRow, notebookRow) {
+      refreshDepartmentFilter();
+      body.replaceChildren();
+      let focusInput;
+      const visible = state.rows.filter(row => (!filter.value || row.nivell === filter.value)
+        && (!departmentFilter.value || row.departament === departmentFilter.value));
+      visible.forEach(row => {
+        const tr = document.createElement('tr');
+        const criteriaCell = document.createElement('td');
+        criteriaCell.className = 'criteria-cell';
+        const notebook = document.createElement('button');
+        notebook.type = 'button';
+        notebook.className = 'notebook' + (row.criteris_recuperacio ? ' has-criteria' : '');
+        notebook.title = 'Criteris de recuperació';
+        notebook.setAttribute('aria-label', 'Criteris de recuperació de ' + (row.assignatura || 'assignatura nova') + ' de ' + row.nivell);
+        notebook.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="15" height="18" rx="2"/><path d="M9 3v18M3 7h4M3 12h4M3 17h4M12 8h5M12 12h5M12 16h3"/></svg>';
+        notebook.addEventListener('click', () => openCriteria(row, notebook));
+        if (row === notebookRow) focusInput = notebook;
+        criteriaCell.append(notebook); tr.append(criteriaCell);
+        const action = document.createElement('td');
+        action.className = 'row-action';
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'delete-row';
+        remove.textContent = '×';
+        remove.title = 'Eliminar assignatura';
+        remove.setAttribute('aria-label', 'Eliminar ' + (row.assignatura || 'assignatura nova') + ' de ' + row.nivell);
+        remove.addEventListener('click', () => {
+          state.rows = state.rows.filter(item => item !== row);
+          markDirty(); render();
+          setStatus('Assignatura eliminada. Prem Desar per guardar els canvis.');
+        });
+        action.append(remove); tr.append(action);
+        const cells = Array.from({ length: 3 }, () => { const td = document.createElement('td'); tr.append(td); return td; });
+        cells[0].append(makeSelect(state.levels, row.nivell, 'Nivell de ' + row.assignatura, value => { row.nivell = value; markDirty(); render(); }, false));
+        const subject = document.createElement('input');
+        subject.value = row.assignatura;
+        if (row === focusRow) focusInput = subject;
+        subject.setAttribute('aria-label', 'Assignatura de ' + row.nivell);
+        subject.addEventListener('input', () => { row.assignatura = subject.value; markDirty(); });
+        cells[1].append(subject);
+        cells[2].append(makeSelect(state.departments, row.departament, 'Departament de ' + row.assignatura, value => { row.departament = value; markDirty(); render(); }));
+        const auditCell = document.createElement('td');
+        auditCell.className = 'audit-cell';
+        if (row.updated_by && row.updated_at) {
+          const check = document.createElement('span');
+          check.className = 'audit-check';
+          check.textContent = '✓';
+          check.tabIndex = 0;
+          const date = new Date(row.updated_at);
+          const formatted = Number.isNaN(date.getTime()) ? row.updated_at : new Intl.DateTimeFormat('ca-ES', {
+            timeZone: 'Europe/Madrid', day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+          }).format(date);
+          check.title = 'ultim canvi per ' + (row.updated_by_name || row.updated_by) + ', el ' + formatted;
+          check.setAttribute('aria-label', check.title);
+          auditCell.append(check);
+        }
+        tr.append(auditCell);
+        body.append(tr);
+      });
+      if (!visible.length) {
+        const tr = document.createElement('tr'); const td = document.createElement('td'); td.colSpan = 6; td.className = 'empty';
+        td.textContent = state.rows.length ? 'No hi ha matèries per als filtres seleccionats.' : 'Encara no hi ha matèries. Prem Nova assignatura per afegir-ne una.';
+        tr.append(td); body.append(tr);
+      }
+      document.getElementById('count').textContent = visible.length + ' de ' + state.rows.length;
+      if (focusInput) { focusInput.scrollIntoView({ block: 'nearest' }); focusInput.focus({ preventScroll: true }); }
+    }
+    filter.addEventListener('change', render);
+    departmentFilter.addEventListener('change', render);
+    newButton.addEventListener('click', () => {
+      if (busy) return;
+      const row = { id: '', nivell: filter.value || state.levels[0], assignatura: '', departament: departmentFilter.value, criteris_recuperacio: '' };
+      state.rows.push(row); markDirty(); render(row);
+    });
+    importButton.addEventListener('click', () => {
+      if (busy || !state.canImport) return;
+      setBusy(true, 'Important matèries de l’horari…');
+      google.script.run.withSuccessHandler(rows => {
+        const keys = new Set(state.rows.map(key)); let added = 0;
+        rows.forEach(row => { if (!keys.has(key(row))) { keys.add(key(row)); state.rows.push(row); added += 1; } });
+        state.rows.sort((a, b) => state.levels.indexOf(a.nivell) - state.levels.indexOf(b.nivell) || a.assignatura.localeCompare(b.assignatura, 'ca'));
+        if (added) dirty = true;
+        render(); setBusy(false);
+        setStatus(added ? added + ' matèries afegides. Prem Desar per guardar els canvis.' : 'No hi ha matèries noves per importar.');
+      }).withFailureHandler(fail).getPendentsImportData();
+    });
+    saveButton.addEventListener('click', () => {
+      if (!dirty || busy) return;
+      if (state.rows.some(row => !row.assignatura.trim())) { setStatus('Totes les matèries han de tenir un nom.', true); return; }
+      setBusy(true, 'Desant la configuració…');
+      google.script.run.withSuccessHandler(result => {
+        state.rows = result.rows; state.revision = result.revision; dirty = false;
+        render(); setBusy(false); setStatus('Configuració desada');
+      }).withFailureHandler(fail).savePendentsConfiguration({ rows: state.rows, revision: state.revision });
+    });
+    window.addEventListener('beforeunload', event => { if (dirty || criteriaSaving || (criteriaDialog.open && criteriaRow && criteriaText.value !== (criteriaRow.criteris_recuperacio || ''))) { event.preventDefault(); event.returnValue = ''; } });
+    setBusy(true, 'Carregant la configuració…');
+    google.script.run.withSuccessHandler(data => {
+      state = data; importButton.hidden = !state.canImport; state.levels.forEach(level => filter.add(new Option(level, level)));
+      render(); setBusy(false); setStatus('Configuració carregada');
+    }).withFailureHandler(fail).getPendentsConfigurationData();
+  </script>
+<?!= HtmlService.createHtmlOutputFromFile('StudentsClient').getContent(); ?>
+</body>
+</html>

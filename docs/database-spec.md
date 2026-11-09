@@ -46,7 +46,7 @@ const tablesSheet = registrySpreadsheet.getSheetByName('tables');
 | `Càrrega lectiva` | `assignatures`, `carrecs` |
 | `Horaris` | `GPU001` |
 | `Dinantia` | `dinantia_2_dades_alumnes`, `teachers_2_dinantia`, `contacts_cache` |
-| `Grades` | `subjects_cache`, `avaluacions`, generated evaluation/config/tutoria/tutorial-group sheets, and global `av_session` batch/audit sheets |
+| `Grades` | `subjects_cache`, `pendents_config`, `pendents_students_cache`, `pendents_import_aliases`, `avaluacions`, generated evaluation/config/tutoria/tutorial-group sheets, and global `av_session` batch/audit sheets |
 
 The old `Grades` -> `subjects` table is obsolete and must not be used for the new configuration workflow.
 
@@ -357,6 +357,27 @@ The configuration endpoint maps these visible Dinantia group values to local
 `subjects_cache.group` codes through the aligned `subjects_cache.group_name`
 values.
 
+### Sheet: students_cache
+
+Located in the logical `Dinantia` spreadsheet. This is the canonical student
+identity source for pending-subject imports. Row 1 starts with these fields:
+
+| Column | Header | Meaning |
+| --- | --- | --- |
+| A | `student_id` | Stable Dinantia student identifier, treated as a string. |
+| B | `student_name` | Full canonical student name. |
+| C | `student_email` | Student email; may be blank. |
+| D | `group_name` | Current canonical class group. |
+
+The remaining source headers are `student_data_sheet`, `parent_ids`, `birthdate`,
+`birthdate_sort_key`, `age`, `document`, `study_type`, `is_adult`, `is_14_plus`,
+and `photo_url`. The `pendents_config` app reads only A:D. It does not modify
+this source or expose the remaining personal-data fields. Repeated student IDs
+may represent different group entries. The importer consolidates equivalent
+entries, preserves distinct groups, and exposes conflicting names/emails in the
+review popup. Selection keys distinguish source entries; destination student IDs
+always retain the canonical `student_id`.
+
 ### Sheet: contacts_cache
 
 `contacts_cache` stores local contact snapshots used by closed-evaluation
@@ -451,6 +472,67 @@ consume the state as follows:
 
 State spelling is exact. The canonical closed value is `Tancada`, never
 `Tancat`.
+
+### Sheet: pendents_config
+
+Owned by the `pendents_config` web app. Row 1 contains the exact headers below;
+data starts in row 2. This sheet is separate from any `pendents` sheet.
+
+| Column | Header | Meaning |
+| --- | --- | --- |
+| A | `id` | Stable numeric record ID, allocated when saving a new row. |
+| B | `nivell` | `1r ESO`, `2n ESO`, `3r ESO`, `4t ESO`, `1r BAT`, or `2n BAT`. |
+| C | `assignatura` | Required subject display name. Unique within the level (case-insensitive, Unicode NFC). |
+| D | `departament` | Optional default department from the list below, or a nonblank department already saved in this column. |
+| E | `criteris_recuperacio` | Optional plain recovery-criteria string. Preserves whitespace and newlines; maximum 50,000 characters. |
+| F | `updated_by` | Normalized active-user email recorded by the server on the last actual row change. |
+| G | `updated_at` | Server timestamp of the last actual row change, stored as a Sheets datetime. |
+
+The app automatically appends F/G when it opens an existing five-column sheet.
+Blank audit fields are initialized only by `Desar criteris` on a saved row, even
+when the criteria text is unchanged. Table saves and new/imported rows leave them
+blank. Once initialized, actual edits update both fields; unchanged rows retain
+their metadata. Browser-supplied audit values are ignored. API timestamps are ISO
+strings; sheet cells use `dd/MM/yyyy HH:mm:ss`. Teacher display names are resolved
+from `Dades de professors` -> `Llista.CORREU INSTIT` and name columns C/D/E, with
+email as fallback. Names are response-only and do not change row identity.
+
+Departments: `Català`, `Castellà`, `Llengües extrangeres`, `Matemàtiques`,
+`Biologia / FiQ`, `Tecnologia`, `Socials`, `ViP / Música`, `Educació Fisica`,
+`Orientació`, `Informàtica`. The row dropdown and save validation also accept
+nonblank department values already saved in column D. Values are trimmed and
+normalized to Unicode NFC. Saving all rows must not reject a legitimate existing
+department merely because it differs from the original defaults.
+
+Subject import reads `subjects_cache` and deduplicates by ESO or BAT level and subject;
+it never rebuilds or changes the cache. New/imported records start with blank criteria; existing criteria survive imports
+and other edits. The destination is created on first save if missing. Existing headers must match exactly before writing. Endpoint access,
+merge, validation, and concurrent-edit behavior belong to
+`pendents-config-spec.md`.
+
+### Sheet: pendents_students_cache
+
+Located in `Grades` and owned by `pendents_config`. Created with the exact
+headers below when the Alumnes tab first loads, if absent. An incompatible
+existing sheet is rejected without overwriting it.
+
+| Column | Header | Meaning |
+| --- | --- | --- |
+| A | `id` | Stable numeric record ID, allocated to new student/subject pairs. |
+| B | `student_id` | Canonical `Dinantia.students_cache.student_id` as a string. |
+| C | `student_name` | Canonical student full name. |
+| D | `student_email` | Canonical student email, possibly blank. |
+| E | `student_group` | Canonical `students_cache.group_name`, not the raw XLSX class label. |
+| F | `subject_id` | Stable `pendents_config.id` as a string; distinguishes the same subject at different levels. |
+| G | `subject_name` | `pendents_config.assignatura` display name. |
+
+One row exists per exact `student_id + subject_id` pair. Import replaces the
+canonical values of existing pairs while preserving their IDs; missing pairs
+are appended and unrelated pairs are retained. Duplicate import pairs are
+consolidated. Subject IDs still referenced here are reserved against reuse when
+new configuration subjects are saved. The student source, subject configuration, and source XLSX remain
+unchanged. Matching, correction, authorization, and concurrency are specified in
+`pendents-config-spec.md`.
 
 ### Sheet: subjects_cache
 
@@ -1000,3 +1082,30 @@ For leave calculations:
 | Timetable source subject | `GPU001` column D |
 | Dinantia display group | `dinantia_2_dades_alumnes.dinantia_group_name` |
 | Endpoint/cache group-subject-teacher source | `Grades` -> `subjects_cache` |
+
+
+### Sheet: pendents_import_aliases
+
+Located in `Grades`. Created automatically when Alumnes loads, when an import is
+previewed, or by `grantPermissionsManually`. This stores confirmed manual XLSX
+import choices shared by school-domain users.
+
+| Column | Header | Meaning |
+| --- | --- | --- |
+| A | `kind` | `subject` or `student`. |
+| B | `source_key` | Server-generated normalized grouping key. Unique together with `kind`. |
+| C | `source_name` | Original XLSX student name for a student mapping; otherwise blank. |
+| D | `source_group` | Original student class label, or subject level/cohort context. |
+| E | `source_subject` | Original XLSX subject label for a subject mapping; otherwise blank. |
+| F | `target_id` | Canonical student ID or `pendents_config.id`. |
+| G | `target_key` | Student choice key, or subject identity fingerprint including ID, name and level. |
+| H | `updated_by` | Authenticated account that confirmed the correction. |
+| I | `updated_at` | Last confirmation datetime, stored as a Date. |
+
+Subject keys preserve the pending level; missing-level keys preserve the source
+cohort. Student keys preserve normalized full name and class group. Only manual
+choices belonging to non-omitted imported rows are saved, once per group.
+Canonical matches take precedence. Missing/changed targets or duplicate mapping
+rows return to review. A fresh correction replaces the prior mapping for that
+source key. To forget a mapping, delete its row in this sheet; do not edit the
+opaque key fields. Mapping changes during review reject the stale import.

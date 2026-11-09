@@ -1,0 +1,294 @@
+<script>
+(() => {
+  const MAX_ROWS = 20000;
+  const PAGE_SIZE = 15;
+  const columns = ['student_id', 'student_name', 'student_email', 'student_group', 'subject_name', 'subject_level'];
+  const tabs = [document.getElementById('subjectsTab'), document.getElementById('studentsTab')];
+  const panels = [document.getElementById('subjectsPanel'), document.getElementById('studentsPanel')];
+  const studentBody = document.getElementById('studentRows');
+  const nameFilter = document.getElementById('studentNameFilter');
+  const groupFilter = document.getElementById('studentGroupFilter');
+  const subjectFilter = document.getElementById('studentSubjectFilter');
+  const studentStatus = document.getElementById('studentStatus');
+  const importButton = document.getElementById('studentImport');
+  const reloadButton = document.getElementById('studentReload');
+  const fileInput = document.getElementById('studentFile');
+  const reviewDialog = document.getElementById('studentImportDialog');
+  const reviewBody = document.getElementById('studentReviewRows');
+  const reviewError = document.getElementById('studentImportError');
+  const confirmButton = document.getElementById('studentImportConfirm');
+  const cancelButton = document.getElementById('studentImportCancel');
+  const previousButton = document.getElementById('reviewPrevious');
+  const nextButton = document.getElementById('reviewNext');
+  let studentsState = { rows: [], subjectLevels: {}, canImport: importButton.getAttribute('data-can-import') === 'true' };
+  let loaded = false;
+  let working = false;
+  let preview = null;
+  let issues = [];
+  let page = 0;
+  let reviewStep = 'subject';
+  let committing = false;
+  let studentLabels = new Map(); let subjectLabels = new Map();
+  let studentIds = new Map(); let subjectIds = new Map();
+  updateImportAccess();
+
+  function updateImportAccess() {
+    importButton.hidden = false;
+    importButton.disabled = working || !studentsState.canImport;
+    importButton.title = studentsState.canImport ? 'Selecciona el fitxer XLSX per importar alumnes'
+      : 'Cal un compte @iernestlluch.cat per importar alumnes';
+    importButton.setAttribute('aria-label', studentsState.canImport ? 'Importar XLSX'
+      : 'Importar XLSX: cal un compte @iernestlluch.cat');
+  }
+  function textKey(value) {
+    return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  }
+  function message(text, error = false) {
+    studentStatus.textContent = text; studentStatus.classList.toggle('error', error);
+  }
+  function work(value, text) {
+    working = value; setBusy(value, text);
+    reloadButton.disabled = value;
+    updateImportAccess();
+  }
+  function studentFail(error) { work(false); message(error.message || 'No s’ha pogut completar l’operació.', true); }
+  function selectTab(index) {
+    if (working) return;
+    tabs.forEach((tab, i) => { tab.setAttribute('aria-selected', String(i === index)); tab.tabIndex = i === index ? 0 : -1; panels[i].hidden = i !== index; });
+    if (index === 1 && !loaded) loadStudents();
+    else if (index === 1 && !dirty && studentStatus.textContent.startsWith('Desa primer els canvis')) message('Alumnes carregats');
+  }
+  tabs.forEach((tab, index) => {
+    tab.addEventListener('click', () => selectTab(index));
+    tab.addEventListener('keydown', event => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      event.preventDefault(); const next = index === 0 ? 1 : 0; selectTab(next); tabs[next].focus();
+    });
+  });
+  function refill(select, entries, allLabel) {
+    const old = select.value;
+    select.replaceChildren(new Option(allLabel, ''));
+    entries.forEach(entry => select.add(new Option(entry.label, entry.id)));
+    select.value = entries.some(entry => entry.id === old) ? old : '';
+  }
+  function renderStudentFilters() {
+    const groups = Array.from(new Set(studentsState.rows.map(row => row.student_group).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'ca'));
+    refill(groupFilter, groups.map(group => ({ id: group, label: group })), 'Tots els grups');
+    const subjects = new Map();
+    studentsState.rows.forEach(row => subjects.set(row.subject_id, { id: row.subject_id,
+      label: row.subject_name + (studentsState.subjectLevels[row.subject_id] ? ' — ' + studentsState.subjectLevels[row.subject_id] : '') }));
+    refill(subjectFilter, Array.from(subjects.values()).sort((a, b) => a.label.localeCompare(b.label, 'ca')), 'Totes les assignatures');
+  }
+  function renderStudents() {
+    const search = textKey(nameFilter.value);
+    const visible = studentsState.rows.filter(row => textKey(row.student_name).includes(search)
+      && (!groupFilter.value || row.student_group === groupFilter.value)
+      && (!subjectFilter.value || row.subject_id === subjectFilter.value));
+    const fragment = document.createDocumentFragment();
+    visible.forEach(row => {
+      const tr = document.createElement('tr');
+      columns.forEach(column => { const td = document.createElement('td'); td.textContent = column === 'subject_level' ? studentsState.subjectLevels[row.subject_id] || '—' : row[column]; tr.append(td); });
+      fragment.append(tr);
+    });
+    if (!visible.length) {
+      const tr = document.createElement('tr'); const td = document.createElement('td'); td.colSpan = columns.length; td.className = 'empty';
+      td.textContent = studentsState.rows.length ? 'No hi ha resultats per als filtres seleccionats.' : 'Encara no hi ha alumnes amb matèries pendents.';
+      tr.append(td); fragment.append(tr);
+    }
+    studentBody.replaceChildren(fragment);
+    document.getElementById('studentCount').textContent = visible.length + ' de ' + studentsState.rows.length;
+  }
+  function applyStudentData(data) {
+    studentsState = Object.assign({}, studentsState, data); loaded = true;
+    updateImportAccess();
+    renderStudentFilters(); renderStudents();
+  }
+  function loadStudents() {
+    work(true, 'Carregant alumnes…');
+    google.script.run.withSuccessHandler(data => { applyStudentData(data); work(false); message('Alumnes carregats'); })
+      .withFailureHandler(studentFail).getPendentsStudentsData();
+  }
+  nameFilter.addEventListener('input', renderStudents);
+  groupFilter.addEventListener('change', renderStudents);
+  subjectFilter.addEventListener('change', renderStudents);
+  reloadButton.addEventListener('click', loadStudents);
+  importButton.addEventListener('click', () => {
+    if (working || !studentsState.canImport) return;
+    if (dirty) { message('Desa primer els canvis de la pestanya Assignatures abans d’importar alumnes.', true); return; }
+    fileInput.click();
+  });
+
+  function parseWorkbook(buffer) {
+    const workbook = XLSX.read(buffer, { type: 'array', cellFormula: false, cellHTML: false, cellStyles: false, sheetRows: MAX_ROWS + 40 });
+    const expected = ["Nom complet de l'alumne/a", 'Grup classe', 'Matèries/Nivells pendents de cursos anteriors - Nom'].map(textKey);
+    const matches = [];
+    workbook.SheetNames.forEach(sheetName => {
+      const sheet = workbook.Sheets[sheetName];
+      const range = XLSX.utils.decode_range(sheet['!fullref'] || sheet['!ref'] || 'A1');
+      if (range.e.r > MAX_ROWS + 30) throw new Error('El fitxer supera el límit de 20.000 files.');
+      const grid = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false, blankrows: true, range: 0 });
+      const headerRow = grid.slice(0, 30).findIndex(row => expected.every(header => row.some(cell => textKey(cell) === header)));
+      if (headerRow < 0) return;
+      const indexes = expected.map(header => grid[headerRow].findIndex(cell => textKey(cell) === header));
+      const rows = grid.slice(headerRow + 1).map((row, i) => ({ sourceRow: headerRow + i + 2,
+        name: String(row[indexes[0]] || '').trim(), group: String(row[indexes[1]] || '').trim(), subject: String(row[indexes[2]] || '').trim() }))
+        .filter(row => row.name || row.group || row.subject);
+      matches.push(rows);
+    });
+    if (matches.length !== 1) throw new Error(matches.length ? 'El fitxer conté més d’un full amb la taula d’importació. Deixa-hi només el full que vols importar.' : 'No s’han trobat les tres columnes de l’exportació Esfer@.');
+    if (!matches[0].length || matches[0].length > MAX_ROWS) throw new Error('El fitxer ha de contenir entre 1 i 20.000 files.');
+    return matches[0];
+  }
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files[0]; fileInput.value = '';
+    if (!file) return;
+    work(true, 'Llegint el fitxer XLSX…');
+    try {
+      if (!/\.xlsx$/i.test(file.name) || file.size > 15 * 1024 * 1024) throw new Error('Selecciona un fitxer XLSX de com a màxim 15 MB.');
+      const rows = parseWorkbook(await file.arrayBuffer());
+      document.getElementById('busyText').textContent = 'Cercant alumnes i assignatures…';
+      google.script.run.withSuccessHandler(data => {
+          work(false);
+          if (!data.rows.length) { message('Cap fila per importar. ' + (data.skippedIncomplete || 0) + ' files incompletes ignorades.'); return; }
+          showReview(data);
+        })
+        .withFailureHandler(studentFail).previewPendentsStudentsImport({ rows });
+    } catch (error) { studentFail(error); }
+  });
+  function showReview(data) {
+    preview = data; page = 0; reviewStep = data.rows.some(row => !row.subjectId) ? 'subject' : 'student'; issues = data.rows.filter(row => !row.studentId || !row.subjectId);
+    studentLabels = new Map(); subjectLabels = new Map(); studentIds = new Map(); subjectIds = new Map();
+    const studentChoices = document.getElementById('studentChoices'); const subjectChoices = document.getElementById('subjectChoices');
+    studentChoices.replaceChildren(); subjectChoices.replaceChildren();
+    data.students.forEach(student => {
+      const label = student.name + ' — ' + (student.group || 'Sense grup') + ' · ' + student.id
+        + (student.multipleEntries ? ' — ' + (student.email || 'Sense correu') : '');
+      const key = student.key || student.id;
+      studentLabels.set(label, key); studentIds.set(key, label); studentChoices.append(new Option(label, label));
+    });
+    data.subjects.forEach(subject => {
+      const label = subject.name + ' — ' + subject.level + ' · ' + subject.id;
+      subjectLabels.set(label, subject.id); subjectIds.set(subject.id, label); subjectChoices.append(new Option(label, label));
+      studentsState.subjectLevels[subject.id] = subject.level;
+    });
+    reviewError.hidden = true;
+    if (!issues.length) { submitStudentImport(false); return; }
+    renderReview(); reviewDialog.showModal();
+  }
+  function groupedIssues(kind) {
+    const field = kind === 'subject' ? 'subjectId' : 'studentId';
+    const groups = new Map();
+    preview.rows.filter(row => !row.ignore && !row[field]).forEach(row => {
+      const key = kind === 'subject'
+        ? row.subjectReviewKey || row.subjectMatchKey || JSON.stringify([textKey(row.sourceSubject), textKey(row.sourceGroup)])
+        : row.studentMatchKey || JSON.stringify([textKey(row.sourceName), textKey(row.sourceGroup)]);
+      if (!groups.has(key)) groups.set(key, { key, rows: [],
+        label: kind === 'subject' ? row.sourceSubject : row.sourceName,
+        context: kind === 'subject' ? row.subjectContext || row.subjectLevel || row.sourceGroup : row.sourceGroup });
+      groups.get(key).rows.push(row);
+    });
+    return Array.from(groups.values()).sort((a, b) => a.label.localeCompare(b.label, 'ca') || a.context.localeCompare(b.context, 'ca'));
+  }
+  function updateReviewSummary() {
+    const omitted = preview.rows.filter(row => row.ignore).length;
+    const subjects = groupedIssues('subject').length;
+    const students = groupedIssues('student').length;
+    document.getElementById('studentImportSummary').textContent = preview.rows.length + ' files amb matèries pendents. '
+      + (preview.skippedIncomplete == null ? preview.skippedNoSubject : preview.skippedIncomplete) + ' files incompletes ignorades. '
+      + subjects + ' matèries i ' + students + ' alumnes per resoldre. ' + omitted + ' files omeses.';
+    const nextStep = reviewStep === 'subject' && subjects === 0 && students > 0;
+    confirmButton.disabled = committing || omitted === preview.rows.length || (reviewStep === 'subject' ? subjects > 0 : subjects > 0 || students > 0);
+    confirmButton.textContent = nextStep ? 'Pas 2: resoldre alumnes' : 'Importar ' + (preview.rows.length - omitted) + ' files';
+  }
+  function correctionInput(group, kind) {
+    const field = kind === 'student' ? 'studentId' : 'subjectId';
+    const labels = kind === 'student' ? studentLabels : subjectLabels;
+    const input = document.createElement('input');
+    input.setAttribute('list', kind === 'student' ? 'studentChoices' : 'subjectChoices');
+    input.setAttribute('aria-label', (kind === 'student' ? 'Alumne per a ' : 'Assignatura per a ') + group.label + ' — ' + group.context);
+    input.disabled = committing;
+    input.placeholder = kind === 'student' ? 'Cerca un alumne…' : 'Cerca una assignatura i nivell…';
+    input.addEventListener('input', () => {
+      const id = labels.get(input.value);
+      if (!id) { updateReviewSummary(); return; }
+      group.rows.forEach(row => { row[field] = id; row[kind + 'ManuallyResolved'] = true; });
+      renderReview();
+    });
+    return input;
+  }
+  function renderReview() {
+    issues = groupedIssues(reviewStep);
+    page = Math.min(page, Math.max(0, Math.ceil(issues.length / PAGE_SIZE) - 1));
+    const subjectsStep = reviewStep === 'subject';
+    document.getElementById('studentImportTitle').textContent = subjectsStep ? 'Pas 1 de 2: resoldre assignatures' : 'Pas 2 de 2: resoldre alumnes';
+    document.getElementById('studentImportHint').textContent = subjectsStep
+      ? 'Tria una assignatura per a cada nom desconegut. La selecció s’aplica a tot el grup i es recordarà en confirmar la importació.'
+      : 'Tria un alumne per a cada nom i grup desconeguts. La selecció s’aplica a totes les seves matèries i es recordarà en confirmar la importació.';
+    const head = document.getElementById('studentReviewHead'); head.replaceChildren();
+    [subjectsStep ? 'Matèria del fitxer' : 'Alumne/a del fitxer', subjectsStep ? 'Nivell / context' : 'Grup', 'Files', subjectsStep ? 'Assignatura de configuració' : 'Alumne/a de Dinantia', 'Ometre'].forEach(text => {
+      const th = document.createElement('th'); th.setAttribute('scope', 'col'); th.textContent = text; head.append(th);
+    });
+    reviewBody.replaceChildren();
+    issues.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).forEach(group => {
+      const tr = document.createElement('tr');
+      const source = document.createElement('td'); source.className = 'review-source'; source.textContent = group.label;
+      const context = document.createElement('td'); context.textContent = group.context;
+      const count = document.createElement('td'); count.textContent = group.rows.length;
+      count.title = 'Files del fitxer: ' + group.rows.map(row => row.sourceRow).join(', ');
+      const selection = document.createElement('td'); selection.append(correctionInput(group, reviewStep));
+      const issue = group.rows[0][subjectsStep ? 'subjectIssue' : 'studentIssue'];
+      if (issue) { const small = document.createElement('small'); small.className = 'review-issue'; small.textContent = issue; selection.append(small); }
+      const skipCell = document.createElement('td'); const skip = document.createElement('input'); skip.type = 'checkbox'; skip.disabled = committing;
+      skip.setAttribute('aria-label', 'Ometre el grup ' + group.label + ' — ' + group.context);
+      skip.addEventListener('change', () => { group.rows.forEach(row => { row.ignore = true; }); renderReview(); }); skipCell.append(skip);
+      tr.append(source, context, count, selection, skipCell); reviewBody.append(tr);
+    });
+    if (!issues.length) {
+      const tr = document.createElement('tr'); const td = document.createElement('td'); td.colSpan = 5; td.className = 'empty';
+      td.textContent = subjectsStep && groupedIssues('student').length
+        ? 'Assignatures resoltes. Continua amb els alumnes.' : 'Totes les incidències estan resoltes. Confirma la importació.';
+      tr.append(td); reviewBody.append(tr);
+    }
+    const pages = Math.max(1, Math.ceil(issues.length / PAGE_SIZE));
+    previousButton.disabled = committing || page === 0; nextButton.disabled = committing || page >= pages - 1;
+    document.getElementById('reviewPage').textContent = issues.length ? 'Grups per resoldre: pàgina ' + (page + 1) + ' de ' + pages : 'Cap grup pendent en aquest pas';
+    updateReviewSummary();
+  }
+  previousButton.addEventListener('click', () => { page -= 1; renderReview(); });
+  nextButton.addEventListener('click', () => { page += 1; renderReview(); });
+  function closeReview() { if (committing) return; reviewDialog.close(); preview = null; issues = []; document.getElementById('studentChoices').replaceChildren(); document.getElementById('subjectChoices').replaceChildren(); importButton.focus(); }
+  cancelButton.addEventListener('click', closeReview);
+  reviewDialog.addEventListener('cancel', event => { event.preventDefault(); closeReview(); });
+  function submitStudentImport(fromDialog) {
+    if (committing || !preview) return;
+    const rows = preview.rows.filter(row => !row.ignore);
+    if (!rows.length || rows.some(row => !row.studentId || !row.subjectId)) { reviewError.textContent = 'Resol totes les files o marca-les per ometre.'; reviewError.hidden = false; return; }
+    committing = true; cancelButton.disabled = true; reviewError.hidden = true;
+    if (fromDialog) { renderReview(); confirmButton.textContent = 'Desant…'; }
+    else work(true, 'Important alumnes…');
+    google.script.run.withSuccessHandler(data => {
+      committing = false; cancelButton.disabled = false; closeReview(); applyStudentData(data); work(false);
+      message(data.added + ' parelles afegides, ' + data.updated + ' actualitzades, ' + data.duplicates + ' duplicats del fitxer unificats.'
+        + (data.aliasesSaved ? ' ' + data.aliasesSaved + ' equivalències memoritzades.' : '')
+        + (data.aliasesWarning ? ' ' + data.aliasesWarning : ''));
+    }).withFailureHandler(error => {
+      committing = false; cancelButton.disabled = false;
+      if (fromDialog) { renderReview(); reviewError.textContent = error.message || 'No s’ha pogut desar la importació.'; reviewError.hidden = false; }
+      else { closeReview(); studentFail(error); }
+    }).commitPendentsStudentsImport({ pairs: rows.map(row => ({ studentId: row.studentId, subjectId: row.subjectId })),
+      corrections: rows.filter(row => row.subjectManuallyResolved || row.studentManuallyResolved).map(row => ({
+        name: row.sourceName, group: row.sourceGroup, subject: row.sourceSubject,
+        studentId: row.studentId, subjectId: row.subjectId,
+        rememberStudent: !!row.studentManuallyResolved, rememberSubject: !!row.subjectManuallyResolved
+      })), sourceRevision: preview.sourceRevision, cacheRevision: preview.cacheRevision, aliasesRevision: preview.aliasesRevision });
+  }
+  confirmButton.addEventListener('click', () => {
+    if (committing || !preview) return;
+    if (reviewStep === 'subject' && !groupedIssues('subject').length && groupedIssues('student').length) {
+      reviewStep = 'student'; page = 0; renderReview(); return;
+    }
+    submitStudentImport(true);
+  });
+  window.addEventListener('beforeunload', event => { if (preview || working) { event.preventDefault(); event.returnValue = ''; } });
+})();
+</script>
