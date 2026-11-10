@@ -94,21 +94,46 @@ or download the built-in example. Importing replaces the modal's subject values
 and extra concepts while preserving the evaluation name and selected groups.
 The first four CSV columns must be `data de creació`, `Avaluació de les
 matèries`, `avaluacio_reduit`, and `Color`; named columns from E onward become
-extra concepts. The creation-date column is ignored, and a concept column with
-no values becomes open text. Subject-evaluation values keep their popup/CSV
-order in both the generated config sheet and the evaluation dropdown.
+extra concepts except for the optional reserved final column
+`need_confirmation`. Its row-2 `TRUE` or `FALSE` value controls the family
+receipt-confirmation checkbox. Legacy CSV files and config sheets without this
+column default to `FALSE`. The creation-date column is ignored, and a concept
+column with no values becomes open text. Subject-evaluation values keep their
+popup/CSV order in both the generated config sheet and the evaluation dropdown.
 
 Evaluation expansion reads Dinantia accounts once, filters `Student` accounts, and indexes them by `account.groups.member`. Those membership values are string group IDs such as `1r ESO A`.
 
 During evaluation creation, the page polls progress by run ID and shows the latest stage in the status area.
 
+Creating the four evaluation sheets retries transient spreadsheet-service
+failures up to five times. After an insert error, the script first checks
+whether Google created the sheet despite the timeout. If the creation stage
+cannot finish, it attempts to remove all sheets from that partial run before
+stopping.
+
+Opening and reading the Grades data, registry writes, and generated-sheet
+writes use the same retry policy. Evaluation
+registration is idempotent by normalized `sheet_name`, and generated sheets
+are rewritten completely on retry so a timeout cannot intentionally produce a
+duplicate registry row or preserve a partial table.
+
+If all retries are exhausted, creation removes the four generated sheets and
+any matching `avaluacions` registry row. Cleanup is also retryable and
+idempotent; any cleanup failure is included in the final user-facing error.
+
 Generated evaluation config sheets include subject-evaluation reduced labels in
-`avaluacio_reduit` and colors in `Color`. Generated evaluation sheets copy the
+`avaluacio_reduit`, colors in `Color`, and a final `need_confirmation` column
+whose row 2 is a Boolean. Generated evaluation sheets copy the
 `subjects_cache.group` array and copy the teacher email next to the teacher name. Rows where
 `subjects_cache.materia_clau` is true are written to `{sheet_name}_tutoria`
 instead of the main sheet. The main sheet fills `grup_tutoria` from the matching
 tutoria row, always includes a `PI` checkbox column defaulting to false, and
 includes hidden `student_account_id` and `subject_order` columns.
+
+When `need_confirmation` is true, the generated `{sheet_name}_tutoria` sheet
+also appends the blank columns `read1_email`, `read1_datetime`, `read2_email`,
+and `read2_datetime` after `Butlletí_url`. They are omitted when confirmation
+is false and are reserved for the separate family-receipt workflow.
 
 After final `grup_tutoria` values are assigned, evaluation creation writes
 `{sheet_name}_tutoria_grups` with the exact headers `grup_tutoria`,

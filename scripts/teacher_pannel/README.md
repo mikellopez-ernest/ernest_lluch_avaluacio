@@ -44,10 +44,11 @@ once by its original spreadsheet row number.
 The `PI` column is fixed narrow in the UI, and blocking operations use a faded
 full-page loading overlay with the current status text under the spinner.
 Generated `grup_tutoria` values are metadata and are not edited by this panel.
-The config sheet `avaluacio_reduit` and `Color` columns are read as
-subject-evaluation metadata and are not treated as custom concept columns. The
-current layout places them in C and D; previous color-only and metadata-free
-layouts remain supported. Subject-evaluation options preserve their
+The config sheet `avaluacio_reduit`, `Color`, and final `need_confirmation`
+columns are read as evaluation metadata and are not treated as custom concept
+columns. Missing `need_confirmation` defaults to `FALSE`. The current layout
+places reduced names and colors in C and D; previous color-only and
+metadata-free layouts remain supported. Subject-evaluation options preserve their
 top-to-bottom order from config column B.
 The selected `Avaluació de la matèria` value colors that dropdown using the
 matching color from the config sheet, with `#FFFFFF` as fallback.

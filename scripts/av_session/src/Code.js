@@ -2262,7 +2262,7 @@ function readEvaluationConfig_(gradesSpreadsheet, evaluationSheetName) {
   const sheet = getRequiredSheet_(gradesSpreadsheet, `${evaluationSheetName}_config`);
   const values = sheet.getDataRange().getValues();
   if (!values.length) {
-    return { subjectEvaluationOptions: [], subjectEvaluationReducedNames: {}, subjectEvaluationColors: {}, conceptColumns: [] };
+    return { subjectEvaluationOptions: [], subjectEvaluationReducedNames: {}, subjectEvaluationColors: {}, needConfirmation: false, conceptColumns: [] };
   }
 
   const headers = values[0].map(header => String(header || '').trim());
@@ -2273,6 +2273,10 @@ function readEvaluationConfig_(gradesSpreadsheet, evaluationSheetName) {
   const firstConceptIndex = hasReducedColumn
     ? (colorIndex === 3 ? 4 : 3)
     : (colorIndex === 2 ? 3 : 2);
+  const confirmationIndex = headers.findIndex(header => normalizeHeader_(header) === normalizeHeader_('need_confirmation'));
+  const needConfirmation = Boolean(confirmationIndex >= 0 && (
+    values[1] && (values[1][confirmationIndex] === true || String(values[1][confirmationIndex]).trim().toUpperCase() === 'TRUE')
+  ));
   const subjectEvaluationOptions = uniqueSorted_(values.slice(1)
     .map(row => String(row[1] || '').trim())
     .filter(Boolean));
@@ -2295,9 +2299,9 @@ function readEvaluationConfig_(gradesSpreadsheet, evaluationSheetName) {
         .map(row => String(row[offset + firstConceptIndex] || '').trim())
         .filter(Boolean))
     }))
-    .filter(concept => concept.header);
+    .filter(concept => concept.header && normalizeHeader_(concept.header) !== normalizeHeader_('need_confirmation'));
 
-  return { subjectEvaluationOptions, subjectEvaluationReducedNames, subjectEvaluationColors, conceptColumns };
+  return { subjectEvaluationOptions, subjectEvaluationReducedNames, subjectEvaluationColors, needConfirmation, conceptColumns };
 }
 
 function getConceptColumnsFromHeaders_(headers) {

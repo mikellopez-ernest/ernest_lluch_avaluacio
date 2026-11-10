@@ -203,14 +203,16 @@ function createEvaluation(payload) {
   const runId = String(payload && payload.runId || Utilities.getUuid()).trim();
   const evaluationName = String(payload && payload.evaluationName || '').trim();
   const selectedGroups = sanitizeOrderedList_(payload && payload.selectedGroups);
-  const cacheRowsForPermissions = readSubjectsCacheRows_();
-  selectedGroups.forEach(group => assertAllowedCacheGroup_(group, cacheRowsForPermissions, visibilityContext));
   const subjectItems = sanitizeSubjectEvaluationItems_(payload && payload.subjectValues);
   const subjectValues = subjectItems.map(item => item.value);
   const concepts = sanitizeConcepts_(payload && payload.concepts);
+  const needConfirmation = parseBoolean_(payload && payload.needConfirmation);
   const logPrefix = `createEvaluation:${runId}`;
   const lock = LockService.getScriptLock();
   let lockAcquired = false;
+  let gradesSpreadsheet = null;
+  let evaluationSheetName = '';
+  let generatedSheetNames = [];
 
   Logger.log('%s start name="%s" selectedGroups=%s subjectValues=%s concepts=%s', logPrefix, evaluationName, selectedGroups.length, subjectValues.length, concepts.length);
   updateEvaluationProgress_(runId, 'running', "S'ha iniciat la creació de l'avaluació.", {
@@ -222,6 +224,13 @@ function createEvaluation(payload) {
   });
 
   try {
+    const cacheRowsForPermissions = runSpreadsheetOperationWithRetry_(
+      () => readSubjectsCacheRows_(),
+      'read subjects cache for permissions',
+      logPrefix
+    );
+    selectedGroups.forEach(group => assertAllowedCacheGroup_(group, cacheRowsForPermissions, visibilityContext));
+
     if (!evaluationName) {
       Logger.log('%s failed missing evaluation name', logPrefix);
       throw new Error("Falta el nom de l'avaluació.");
@@ -244,8 +253,13 @@ function createEvaluation(payload) {
     Logger.log('%s lock acquired', logPrefix);
     updateEvaluationProgress_(runId, 'running', "Bloqueig adquirit. Preparant els fulls...", { stage: 'lock_acquired' });
 
-    const gradesSpreadsheet = openLogicalTableSpreadsheet_(GRADES_TABLE_NAME);
+    gradesSpreadsheet = runSpreadsheetOperationWithRetry_(
+      () => openLogicalTableSpreadsheet_(GRADES_TABLE_NAME),
+      'open Grades spreadsheet',
+      logPrefix
+    );
     const sheetName = normalizeSheetName_(evaluationName);
+    evaluationSheetName = sheetName;
     const configSheetName = `${sheetName}_config`;
     const tutoriaSheetName = `${sheetName}_tutoria`;
     const tutoriaGrupsSheetName = `${sheetName}_tutoria_grups`;
@@ -259,41 +273,63 @@ function createEvaluation(payload) {
       tutoriaGrupsSheetName
     });
 
-    if (gradesSpreadsheet.getSheetByName(sheetName)) {
+    const existingSheets = runSpreadsheetOperationWithRetry_(
+      () => [sheetName, configSheetName, tutoriaSheetName, tutoriaGrupsSheetName]
+        .filter(name => gradesSpreadsheet.getSheetByName(name)),
+      'check evaluation sheet names',
+      logPrefix
+    );
+
+    if (existingSheets.includes(sheetName)) {
       Logger.log('%s failed sheet already exists "%s"', logPrefix, sheetName);
       throw new Error(`Ja existeix el full: ${sheetName}`);
     }
 
-    if (gradesSpreadsheet.getSheetByName(configSheetName)) {
+    if (existingSheets.includes(configSheetName)) {
       Logger.log('%s failed config sheet already exists "%s"', logPrefix, configSheetName);
       throw new Error(`Ja existeix el full: ${configSheetName}`);
     }
 
-    if (gradesSpreadsheet.getSheetByName(tutoriaSheetName)) {
+    if (existingSheets.includes(tutoriaSheetName)) {
       Logger.log('%s failed tutoria sheet already exists "%s"', logPrefix, tutoriaSheetName);
       throw new Error(`Ja existeix el full: ${tutoriaSheetName}`);
     }
 
-    if (gradesSpreadsheet.getSheetByName(tutoriaGrupsSheetName)) {
+    if (existingSheets.includes(tutoriaGrupsSheetName)) {
       Logger.log('%s failed tutoria groups sheet already exists "%s"', logPrefix, tutoriaGrupsSheetName);
       throw new Error(`Ja existeix el full: ${tutoriaGrupsSheetName}`);
     }
 
     Logger.log('%s inserting sheets', logPrefix);
-    const mainSheet = gradesSpreadsheet.insertSheet(sheetName);
-    const configSheet = gradesSpreadsheet.insertSheet(configSheetName);
-    const tutoriaSheet = gradesSpreadsheet.insertSheet(tutoriaSheetName);
-    const tutoriaGrupsSheet = gradesSpreadsheet.insertSheet(tutoriaGrupsSheetName);
+    generatedSheetNames = [
+      sheetName,
+      configSheetName,
+      tutoriaSheetName,
+      tutoriaGrupsSheetName
+    ];
+    const createdSheets = insertEvaluationSheets_(gradesSpreadsheet, generatedSheetNames, logPrefix);
+    const mainSheet = createdSheets[sheetName];
+    const configSheet = createdSheets[configSheetName];
+    const tutoriaSheet = createdSheets[tutoriaSheetName];
+    const tutoriaGrupsSheet = createdSheets[tutoriaGrupsSheetName];
 
     Logger.log('%s registering evaluation', logPrefix);
     updateEvaluationProgress_(runId, 'running', "Registrant l'avaluació...", { stage: 'registering' });
-    registerEvaluation_(gradesSpreadsheet, evaluationName, sheetName);
+    runSpreadsheetOperationWithRetry_(
+      () => registerEvaluation_(gradesSpreadsheet, evaluationName, sheetName),
+      'register evaluation',
+      logPrefix
+    );
     Logger.log('%s writing config', logPrefix);
     updateEvaluationProgress_(runId, 'running', 'Escrivint la configuració...', { stage: 'writing_config' });
-    writeEvaluationConfig_(configSheet, subjectItems, concepts);
+    runSpreadsheetOperationWithRetry_(
+      () => writeEvaluationConfig_(configSheet, subjectItems, concepts, needConfirmation),
+      'write evaluation config',
+      logPrefix
+    );
     Logger.log('%s populating main, tutoria and tutoria groups sheets', logPrefix);
     updateEvaluationProgress_(runId, 'running', 'Llegint alumnes de Dinantia i generant files principals, de tutoria i de grups de tutoria...', { stage: 'populating_main' });
-    const result = populateEvaluationSheets_(mainSheet, tutoriaSheet, tutoriaGrupsSheet, subjectValues, concepts, logPrefix, runId, selectedGroups);
+    const result = populateEvaluationSheets_(mainSheet, tutoriaSheet, tutoriaGrupsSheet, subjectValues, concepts, logPrefix, runId, selectedGroups, needConfirmation);
     Logger.log('%s completed rowsWritten=%s tutoriaRowsWritten=%s tutoriaGroupRowsWritten=%s', logPrefix, result.mainRowsWritten, result.tutoriaRowsWritten, result.tutoriaGroupRowsWritten);
     updateEvaluationProgress_(runId, 'complete', `Avaluació creada: ${sheetName} (${result.mainRowsWritten} files, ${result.tutoriaRowsWritten} tutoria, ${result.tutoriaGroupRowsWritten} grups de tutoria).`, {
       stage: 'complete',
@@ -319,12 +355,140 @@ function createEvaluation(payload) {
       status: 'evaluation created.'
     };
   } catch (error) {
-    updateEvaluationProgress_(runId, 'error', error.message || String(error), { stage: 'error' });
-    throw error;
+    const originalMessage = error.message || String(error);
+    let cleanupFailures = [];
+
+    if (gradesSpreadsheet && generatedSheetNames.length) {
+      updateEvaluationProgress_(runId, 'running', "La creació ha fallat. Eliminant els fulls parcials...", { stage: 'cleanup' });
+      cleanupFailures = cleanupFailedEvaluation_(
+        gradesSpreadsheet,
+        generatedSheetNames,
+        evaluationSheetName,
+        logPrefix
+      );
+    }
+
+    const cleanupMessage = cleanupFailures.length
+      ? ` No s'ha pogut completar tota la neteja: ${cleanupFailures.join('; ')}`
+      : (generatedSheetNames.length ? ' Els fulls parcials i el registre de l\'avaluació s\'han eliminat.' : '');
+    const finalMessage = `${originalMessage}${cleanupMessage}`;
+    updateEvaluationProgress_(runId, 'error', finalMessage, { stage: 'error', cleanupFailures });
+    throw new Error(finalMessage);
   } finally {
     Logger.log('%s releasing lock', logPrefix);
     if (lockAcquired) {
       lock.releaseLock();
+    }
+  }
+}
+
+function insertEvaluationSheets_(spreadsheet, sheetNames, logPrefix) {
+  const createdSheets = {};
+
+  try {
+    sheetNames.forEach(sheetName => {
+      createdSheets[sheetName] = insertSheetWithRetry_(spreadsheet, sheetName, logPrefix);
+    });
+    return createdSheets;
+  } catch (error) {
+    Logger.log('%s sheet creation failed; cleaning up partial sheets: %s', logPrefix, error.message || String(error));
+    sheetNames.forEach(sheetName => {
+      try {
+        const sheet = createdSheets[sheetName] || spreadsheet.getSheetByName(sheetName);
+        if (sheet) spreadsheet.deleteSheet(sheet);
+      } catch (cleanupError) {
+        Logger.log('%s could not delete partial sheet "%s": %s', logPrefix, sheetName, cleanupError.message || String(cleanupError));
+      }
+    });
+    throw error;
+  }
+}
+
+function insertSheetWithRetry_(spreadsheet, sheetName, logPrefix) {
+  const maxAttempts = 5;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const sheet = spreadsheet.insertSheet(sheetName);
+      Logger.log('%s created sheet "%s" attempt=%s', logPrefix, sheetName, attempt);
+      return sheet;
+    } catch (error) {
+      // A timed-out insert can still complete on Google's side. Resolve by name before retrying.
+      try {
+        const createdSheet = spreadsheet.getSheetByName(sheetName);
+        if (createdSheet) {
+          Logger.log('%s recovered sheet "%s" after insert error attempt=%s', logPrefix, sheetName, attempt);
+          return createdSheet;
+        }
+      } catch (lookupError) {
+        Logger.log('%s could not verify sheet "%s" after attempt=%s: %s', logPrefix, sheetName, attempt, lookupError.message || String(lookupError));
+      }
+
+      Logger.log('%s insert sheet "%s" failed attempt=%s/%s: %s', logPrefix, sheetName, attempt, maxAttempts, error.message || String(error));
+      if (attempt === maxAttempts) throw error;
+      Utilities.sleep(1000 * Math.pow(2, attempt - 1));
+    }
+  }
+
+  throw new Error(`No s'ha pogut crear el full: ${sheetName}`);
+}
+
+function runSpreadsheetOperationWithRetry_(operation, label, logPrefix) {
+  const maxAttempts = 5;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const result = operation();
+      Logger.log('%s spreadsheet operation "%s" completed attempt=%s', logPrefix, label, attempt);
+      return result;
+    } catch (error) {
+      Logger.log('%s spreadsheet operation "%s" failed attempt=%s/%s: %s', logPrefix, label, attempt, maxAttempts, error.message || String(error));
+      if (attempt === maxAttempts) throw error;
+      Utilities.sleep(1000 * Math.pow(2, attempt - 1));
+    }
+  }
+
+  throw new Error(`No s'ha pogut completar l'operació: ${label}`);
+}
+
+function cleanupFailedEvaluation_(spreadsheet, sheetNames, evaluationSheetName, logPrefix) {
+  const failures = [];
+
+  try {
+    runSpreadsheetOperationWithRetry_(() => {
+      sheetNames.forEach(sheetName => {
+        const sheet = spreadsheet.getSheetByName(sheetName);
+        if (sheet) spreadsheet.deleteSheet(sheet);
+      });
+    }, 'delete partial evaluation sheets', logPrefix);
+  } catch (error) {
+    failures.push(`fulls: ${error.message || String(error)}`);
+  }
+
+  if (evaluationSheetName) {
+    try {
+      runSpreadsheetOperationWithRetry_(
+        () => removeEvaluationRegistration_(spreadsheet, evaluationSheetName),
+        'delete partial evaluation registration',
+        logPrefix
+      );
+    } catch (error) {
+      failures.push(`avaluacions: ${error.message || String(error)}`);
+    }
+  }
+
+  return failures;
+}
+
+function removeEvaluationRegistration_(gradesSpreadsheet, evaluationSheetName) {
+  const sheet = getRequiredSheet_(gradesSpreadsheet, 'avaluacions');
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+
+  const sheetNames = sheet.getRange(2, 3, lastRow - 1, 1).getValues();
+  for (let index = sheetNames.length - 1; index >= 0; index -= 1) {
+    if (normalizeCode_(sheetNames[index][0]) === normalizeCode_(evaluationSheetName)) {
+      sheet.deleteRow(index + 2);
     }
   }
 }
@@ -625,6 +789,17 @@ function cleanupEvaluationProgressProperties_() {
 function registerEvaluation_(gradesSpreadsheet, evaluationName, sheetName) {
   const sheet = getRequiredSheet_(gradesSpreadsheet, 'avaluacions');
   ensureEvaluationRegistryHeaders_(sheet);
+  const lastRow = sheet.getLastRow();
+  if (lastRow >= 2) {
+    const existingNames = sheet.getRange(2, 3, lastRow - 1, 1).getValues();
+    const existingIndex = existingNames.findIndex(row => normalizeCode_(row[0]) === normalizeCode_(sheetName));
+    if (existingIndex >= 0) {
+      const existingRow = existingIndex + 2;
+      applyEvaluationStatusValidation_(sheet, existingRow);
+      return existingRow;
+    }
+  }
+
   const rows = readRowsByHeader_(sheet);
   const nextId = rows.reduce((max, row) => {
     const id = Number(getField_(row, 'id'));
@@ -634,6 +809,7 @@ function registerEvaluation_(gradesSpreadsheet, evaluationName, sheetName) {
   const nextRow = sheet.getLastRow() + 1;
   sheet.getRange(nextRow, 1, 1, 4).setValues([[nextId, evaluationName, sheetName, 'Creada']]);
   applyEvaluationStatusValidation_(sheet, nextRow);
+  return nextRow;
 }
 
 function ensureEvaluationRegistryHeaders_(sheet) {
@@ -657,10 +833,11 @@ function applyEvaluationStatusValidation_(sheet, rowNumber) {
   sheet.getRange(rowNumber, 4).setDataValidation(rule);
 }
 
-function writeEvaluationConfig_(sheet, subjectItems, concepts) {
+function writeEvaluationConfig_(sheet, subjectItems, concepts, needConfirmation) {
   const creationDate = Utilities.formatDate(new Date(), 'Europe/Madrid', 'yyyyMMdd:HHmm');
   const headers = ['data de creació', 'Avaluació de les matèries', 'avaluacio_reduit', 'Color'].concat(
-    concepts.map(concept => concept.name)
+    concepts.map(concept => concept.name),
+    ['need_confirmation']
   );
   const maxRows = Math.max(
     1,
@@ -675,7 +852,8 @@ function writeEvaluationConfig_(sheet, subjectItems, concepts) {
       subjectItems[index] ? subjectItems[index].value : '',
       subjectItems[index] ? subjectItems[index].reduit : '',
       subjectItems[index] ? subjectItems[index].color : '',
-      ...concepts.map(concept => concept.options[index] || '')
+      ...concepts.map(concept => concept.options[index] || ''),
+      index === 0 ? needConfirmation === true : ''
     ]);
   }
 
@@ -684,9 +862,13 @@ function writeEvaluationConfig_(sheet, subjectItems, concepts) {
   formatEvaluationConfigSheet_(sheet, headers.length);
 }
 
-function populateEvaluationSheets_(mainSheet, tutoriaSheet, tutoriaGrupsSheet, subjectValues, concepts, logPrefix, runId, selectedGroups) {
+function populateEvaluationSheets_(mainSheet, tutoriaSheet, tutoriaGrupsSheet, subjectValues, concepts, logPrefix, runId, selectedGroups, needConfirmation) {
   const selectedGroupSet = new Set((selectedGroups || []).map(group => normalizeCode_(group)));
-  const cacheRows = readSubjectsCacheRows_()
+  const cacheRows = runSpreadsheetOperationWithRetry_(
+    () => readSubjectsCacheRows_(),
+    'read subjects cache for evaluation generation',
+    logPrefix
+  )
     .filter(row => splitGroupCodes_(row.group).some(groupCode => selectedGroupSet.has(normalizeCode_(groupCode))));
   const groupAliasMap = buildDinantiaGroupAliasMap_();
   const groupIds = uniqueSorted_(cacheRows.reduce((ids, row) => (
@@ -710,6 +892,9 @@ function populateEvaluationSheets_(mainSheet, tutoriaSheet, tutoriaGrupsSheet, s
     'PI',
     'Avaluació de la matèria'
   ].concat(concepts.map(concept => concept.name), ['student_account_id', 'subject_order']);
+  const confirmationHeaders = needConfirmation === true
+    ? ['read1_email', 'read1_datetime', 'read2_email', 'read2_datetime']
+    : [];
   const tutoriaHeaders = [
     'group',
     'group_name',
@@ -722,7 +907,7 @@ function populateEvaluationSheets_(mainSheet, tutoriaSheet, tutoriaGrupsSheet, s
     'subject_order',
     'Comentari_tutor',
     'Butlletí_url'
-  ];
+  ].concat(confirmationHeaders);
   const mainRows = [];
   const tutoriaRows = [];
 
@@ -745,7 +930,8 @@ function populateEvaluationSheets_(mainSheet, tutoriaSheet, tutoriaGrupsSheet, s
           student.id,
           sanitizeOrder_(cacheRow.order),
           '',
-          ''
+          '',
+          ...confirmationHeaders.map(() => '')
         ]);
         return;
       }
@@ -781,23 +967,31 @@ function populateEvaluationSheets_(mainSheet, tutoriaSheet, tutoriaGrupsSheet, s
     tutoriaGroupRows: tutoriaGroupRows.length
   });
 
-  mainSheet.clearContents();
-  mainSheet.getRange(1, 1, mainValues.length, mainHeaders.length).setValues(mainValues);
-  formatEvaluationMainSheet_(mainSheet, mainHeaders.length, mainValues.length);
+  runSpreadsheetOperationWithRetry_(() => {
+    mainSheet.clearContents();
+    mainSheet.getRange(1, 1, mainValues.length, mainHeaders.length).setValues(mainValues);
+    formatEvaluationMainSheet_(mainSheet, mainHeaders.length, mainValues.length);
 
-  if (mainValues.length > 1) {
-    applyEvaluationValidations_(mainSheet, mainValues.length - 1, subjectValues, concepts);
-  }
+    if (mainValues.length > 1) {
+      applyEvaluationValidations_(mainSheet, mainValues.length - 1, subjectValues, concepts);
+    }
+  }, 'write main evaluation sheet', logPrefix);
 
-  tutoriaSheet.clearContents();
-  tutoriaSheet.getRange(1, 1, tutoriaValues.length, tutoriaHeaders.length).setValues(tutoriaValues);
-  formatTutoriaSheet_(tutoriaSheet, tutoriaHeaders.length, tutoriaValues.length);
+  runSpreadsheetOperationWithRetry_(() => {
+    tutoriaSheet.clearContents();
+    tutoriaSheet.getRange(1, 1, tutoriaValues.length, tutoriaHeaders.length).setValues(tutoriaValues);
+    formatTutoriaSheet_(tutoriaSheet, tutoriaHeaders.length, tutoriaValues.length);
+  }, 'write tutoria sheet', logPrefix);
 
   updateEvaluationProgress_(runId, 'running', `Escrivint ${tutoriaGroupRows.length} grups al full de comentaris de tutoria...`, {
     stage: 'writing_tutoria_groups',
     tutoriaGroupRows: tutoriaGroupRows.length
   });
-  writeTutoriaGroupsSheet_(tutoriaGrupsSheet, tutoriaGroupRows);
+  runSpreadsheetOperationWithRetry_(
+    () => writeTutoriaGroupsSheet_(tutoriaGrupsSheet, tutoriaGroupRows),
+    'write tutoria groups sheet',
+    logPrefix
+  );
 
   return {
     mainRowsWritten: mainRows.length,

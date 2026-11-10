@@ -300,9 +300,12 @@ normal editable table column.
 The config sheet `{sheet_name}_config` is read like the teacher panel: column B
 contains subject-evaluation options, optional column C named
 `avaluacio_reduit` contains reduced labels, optional column D named `Color`
-contains colors, and concept columns start after those metadata columns.
+contains colors, and concept columns start after those metadata columns. An
+optional final column named `need_confirmation` contains a Boolean in row 2;
+it is reserved metadata and is excluded from custom concepts. If absent, its
+value is `FALSE`.
 The backend returns these metadata maps as `subjectEvaluationReducedNames` and
-`subjectEvaluationColors`.
+`subjectEvaluationColors`, and exposes the Boolean as `needConfirmation`.
 
 Below the table, the UI shows a text area titled `Comentari del tutor`. It is
 approximately three text rows tall. The field is student-scoped: it is enabled
@@ -350,7 +353,11 @@ If an older `{sheet_name}_tutoria` sheet is missing any of the bulletin/email
 columns, the backend creates the missing headers automatically before writing
 PDF URLs, destination email addresses, or send markers.
 
-`configuration` creates the base columns only through `Butlletí_url`.
+`configuration` always creates the base columns through `Butlletí_url`. When
+the evaluation config has `need_confirmation = TRUE`, it also appends
+`read1_email`, `read1_datetime`, `read2_email`, and `read2_datetime`. These
+receipt fields are blank initially and are reserved for a separate confirmation
+workflow. When confirmation is false or absent, the four columns are absent.
 `av_session` owns the four email columns as a lazy operational extension. This
 is not considered a migration of the evaluation's academic schema.
 

@@ -769,7 +769,8 @@ Config sheet name:
 | B | `Avaluació de les matèries` | Row 2 onward contains the subject-evaluation values. |
 | C | `avaluacio_reduit` | Row 2 onward contains the reduced label for the subject-evaluation value in column B. |
 | D | `Color` | Row 2 onward contains the hex color for the subject-evaluation value in column B. |
-| E onward | Concept name | Row 2 onward contains allowed option values. Blank/no values means open text. |
+| E through the penultimate column | Concept name | Row 2 onward contains allowed option values. Blank/no values means open text. |
+| Final column | `need_confirmation` | Row 2 contains a Boolean. Remaining rows are blank. |
 
 `avaluacio_reduit` is a short label for the subject-evaluation value. If the
 user leaves it blank, write a blank value and let consumers fall back to column
@@ -790,6 +791,12 @@ C. Consumers must inspect config headers:
 
 The `avaluacio_reduit` and `Color` columns are metadata for `Avaluació de la
 matèria`; they are not custom concepts.
+
+`need_confirmation` is reserved evaluation metadata and must always be the
+final config column. `TRUE` means families must confirm receipt; `FALSE` means
+confirmation is not required. Config sheets without this column are legacy
+compatible and must be interpreted as `FALSE`. Consumers must exclude this
+column when discovering custom evaluation concepts.
 
 ### Main Evaluation Sheet Layout
 
@@ -891,6 +898,20 @@ Tutoria sheet columns:
 | I | `subject_order` | Numeric order copied from `subjects_cache.order`. Hidden metadata. |
 | J | `Comentari_tutor` | Blank at creation time. Reserved for tutor comments. |
 | K | `Butlletí_url` | Blank at creation time. Reserved for bulletin/report URL. |
+
+If `{sheet_name}_config.need_confirmation` is `TRUE`, the generated tutoria
+sheet appends four optional receipt-confirmation fields:
+
+| Column | Header | Values at creation |
+| --- | --- | --- |
+| L | `read1_email` | Blank. Reserved for the first confirming user's email. |
+| M | `read1_datetime` | Blank. Reserved for the first confirmation datetime. |
+| N | `read2_email` | Blank. Reserved for the second confirming user's email. |
+| O | `read2_datetime` | Blank. Reserved for the second confirmation datetime. |
+
+These columns are absent when `need_confirmation` is `FALSE` or missing. This
+schema defines storage only; the confirmation workflow is implemented by a
+separate application.
 
 Columns A-K are the base schema created by `configuration`. The evaluation
 session may append these operational email columns on first write when they are

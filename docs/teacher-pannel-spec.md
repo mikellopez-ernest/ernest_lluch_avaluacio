@@ -163,7 +163,8 @@ The endpoint reads `{sheet_name}_config` for dropdown values.
 | B | Values for `Avaluació de la matèria`. |
 | C | Optional `avaluacio_reduit` column with reduced labels for the subject-evaluation values in column B. |
 | D | Optional `Color` column with hex colors for the subject-evaluation values in column B. |
-| E onward | Concept names and optional dropdown values. |
+| E through the column before `need_confirmation` | Concept names and optional dropdown values. |
+| Final, when present | `need_confirmation`; row 2 Boolean evaluation metadata. |
 
 The `Avaluació de la matèria` dropdown must preserve the top-to-bottom order
 of the non-empty values in config column B. Duplicate values are shown once,
@@ -189,7 +190,10 @@ For custom concept columns:
 - Show all remaining main-sheet headers after `Avaluació de la matèria` exactly as they appear.
 - Exclude `student_account_id`.
 - Exclude `subject_order`.
-- Ignore the config `avaluacio_reduit` and `Color` columns when resolving custom concept options.
+- Ignore the config `avaluacio_reduit`, `Color`, and reserved final
+  `need_confirmation` columns when resolving custom concept options. Read
+  `need_confirmation` from row 2 as a Boolean; if the column is absent, use
+  `FALSE`.
 - If the matching config column has values, render a dropdown.
 - If the matching config column has no values, render an open text field.
 

@@ -231,6 +231,7 @@ The `Crear avaluació` modal contains:
 | Group list | `Grups a avaluar`; one checkbox per individual `subjects_cache.group` code, checked by default, using first-appearance order from `subjects_cache`. |
 | Subject values | `Avaluació de les matèries`; dynamic list with full text, reduced-name text, color picker, and delete controls. |
 | Extra concepts | `Altres conceptes a avaluar`; dynamic concepts, each with dynamic option rows. |
+| Family confirmation | Final checkbox `Les famílies han de confirmar la recepció?`, unchecked by default. |
 
 Concept rules:
 
@@ -239,7 +240,7 @@ Concept rules:
 3. CSV columns A-D must be, in order, `data de creació`, `Avaluació de les matèries`, `avaluacio_reduit`, and `Color`.
 4. Column A is ignored because the new config sheet receives its own creation datetime.
 5. Nonblank values in columns B-D populate subject value, reduced name, and color. Missing or invalid colors default to `#FFFFFF`.
-6. Each named column from E onward becomes an extra concept. Its nonblank cells become options; a column with no options becomes open text.
+6. Each named column from E up to (but excluding) a final `need_confirmation` column becomes an extra concept. Its nonblank cells become options; a column with no options becomes open text.
 7. Empty concept headers are ignored. Imported row and option order is preserved.
 8. The example download reproduces the supported CSV layout and values supplied for `avaluacio_inicial_config`.
 9. A subject value is a dropdown option for `Avaluació de la matèria`.
@@ -254,6 +255,9 @@ Concept rules:
 18. There is no `+` button next to the evaluation name.
 19. Subject values, concepts, and concept options have red delete controls.
 20. The visible order of subject values in the popup is authoritative. The server must preserve it when writing config column B and when creating the `Avaluació de la matèria` validation dropdown; it must not sort those values alphabetically.
+21. `need_confirmation` is an optional reserved final CSV column. `TRUE` checks the family-confirmation option; `FALSE` or a blank value leaves it unchecked. Any other nonblank value is rejected.
+22. A legacy CSV without `need_confirmation` remains valid and is interpreted as `FALSE`.
+23. The downloadable example includes `need_confirmation` as its final column and `FALSE` in row 2.
 
 Generated config sheets use this layout:
 
@@ -263,10 +267,12 @@ Generated config sheets use this layout:
 | B | `Avaluació de les matèries` | Subject-evaluation dropdown values. |
 | C | `avaluacio_reduit` | Reduced label for the corresponding value in column B. |
 | D | `Color` | Six-digit hex color for the corresponding value in column B. |
-| E onward | Concept name | Optional concept dropdown values. Blank means open text. |
+| E through the penultimate column | Concept name | Optional concept dropdown values. Blank means open text. |
+| Final column | `need_confirmation` | Row 2 contains the Boolean `TRUE` or `FALSE`; later rows are blank. |
 
 Extra concept columns start at E because C is reserved for `avaluacio_reduit`
-and D is reserved for `Color`.
+and D is reserved for `Color`. `need_confirmation` is always the final config
+column and is metadata, not an evaluation concept.
 
 ## Evaluation Creation
 
@@ -279,7 +285,7 @@ When the user confirms:
 5. Create `{sheet_name}_tutoria`.
 6. Create `{sheet_name}_tutoria_grups`.
 7. Append `Grades` -> `avaluacions` with `Estat = Creada`.
-8. Write the config sheet, including subject-evaluation reduced labels and colors.
+8. Write the config sheet, including subject-evaluation reduced labels, colors, and the family-confirmation Boolean.
 9. Populate the main sheet and tutoria sheet from `subjects_cache`.
 10. Derive distinct tutorial groups from the final generated `grup_tutoria` values.
 11. Populate `{sheet_name}_tutoria_grups` with one row per tutorial group.
@@ -336,6 +342,20 @@ generation rule.
 | J | `Comentari_tutor` | Blank at creation time. |
 | K | `Butlletí_url` | Blank at creation time. |
 
+When config metadata `need_confirmation = TRUE`, append these columns after
+`Butlletí_url`; all values are blank at creation time:
+
+| Column | Header | Intended value |
+| --- | --- | --- |
+| L | `read1_email` | Email of the first user who confirms receipt. |
+| M | `read1_datetime` | Datetime of the first confirmation. |
+| N | `read2_email` | Email of the second user who confirms receipt. |
+| O | `read2_datetime` | Datetime of the second confirmation. |
+
+When `need_confirmation = FALSE`, columns L-O are not created. The
+configuration application only creates the fields; confirmation-writing logic
+belongs to a separate consumer workflow.
+
 This is the base tutoria schema created by `configuration`. It deliberately
 does not create delivery columns. `av_session` owns the lazy addition of
 `email_1`, `enviat_email_1`, `email_2`, and `enviat_email_2` when bulletin
@@ -381,6 +401,7 @@ properties. The configuration data loader deletes legacy
 | student index built | Matched groups and indexed student rows. |
 | writing main | Generated main, tutoria, and tutorial-group counts are known; main and tutoria rows are being written. |
 | writing tutoria groups | Distinct final `grup_tutoria` rows are being written to `{sheet_name}_tutoria_grups`. |
+| cleanup | Creation failed after generating sheets; partial sheets and the matching registry row are being removed. |
 | complete | Main, tutoria, and tutoria-group rows written. |
 | release | Script lock released. |
 
@@ -388,6 +409,28 @@ The `createEvaluation` result and final progress metadata include
 `sheetName`, `configSheetName`, `tutoriaSheetName`,
 `tutoriaGrupsSheetName`, `rowsWritten`, `tutoriaRowsWritten`, and
 `tutoriaGroupRowsWritten`.
+
+Evaluation-sheet insertion is resilient to transient Google Sheets service
+timeouts. Each sheet is attempted up to five times with exponential backoff.
+Because an insertion can finish remotely even when Apps Script reports a
+timeout, the server checks for the requested sheet name before retrying. If the
+four-sheet creation stage still fails, it makes a best-effort cleanup of every
+sheet created by that attempt and does not continue to registry or population.
+
+Opening `Grades`, reading `subjects_cache`, checking destination names, and the
+subsequent registry, config, main-sheet, tutoria-sheet, and tutoria-group writes
+are also retried up to five times with exponential backoff. Registry
+creation is idempotent by normalized `sheet_name`: if a prior timed-out attempt
+actually wrote the row, the retry reuses that row and reapplies its status
+validation instead of appending a duplicate. Sheet-content writes are complete
+rewrites, so retrying them replaces any partial result.
+
+If evaluation creation still fails after its retries, the process enters a
+cleanup stage. It deletes all four generated sheets and removes every matching
+row from `Grades -> avaluacions` by normalized `sheet_name`. Cleanup operations
+are themselves retried and are idempotent, so a deletion that completes on
+Google's side despite a timeout is recognized on the next attempt. A cleanup
+failure is appended to the error shown to the user.
 
 ## Manual Authorization
 
